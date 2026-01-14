@@ -20,10 +20,12 @@ type FloodQ100Check = {
   featureCount: number;
 };
 
+type SourcesMap = Record<string, { name: string; url: string; note?: string }>;
+
 function riskFrom(inside: boolean, rain1hMm: number | null) {
   if (!inside) return { level: "Bajo" as const, reason: "Fuera de Q100" };
   if (rain1hMm == null) return { level: "Medio" as const, reason: "En Q100, sin dato lluvia 1h" };
-  if (rain1hMm < 1) return { level: "Medio" as const, reason: "En Q100, lluvia débil" };
+  if (rain1hMm < 1) return { level: "Medio" as const, reason: "En Q100, lluvia debil" };
   if (rain1hMm < 5) return { level: "Alto" as const, reason: "En Q100, lluvia moderada" };
   return { level: "Muy alto" as const, reason: "En Q100, lluvia intensa" };
 }
@@ -57,6 +59,26 @@ async function buscarCoordenadas(address: string) {
   if (lat === null || lon === null) throw new Error("Respuesta inválida de Nominatim.");
 
   return { lat, lon, label: item?.display_name ?? address };
+}
+
+async function reverseGeocode(lat: number, lon: number) {
+  const ua = process.env.NOMINATIM_USER_AGENT || "map-ia/1.0 (contact: example@example.com)";
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=12&lat=${encodeURIComponent(
+    String(lat)
+  )}&lon=${encodeURIComponent(String(lon))}`;
+
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": ua,
+      "Accept-Language": "es",
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) throw new Error(`Nominatim reverse error: ${res.status}`);
+  const data: any = await res.json().catch(() => ({}));
+  const label = typeof data?.display_name === "string" ? data.display_name : null;
+  return { label };
 }
 
 async function capasUrbanismo(lat: number, lon: number) {
@@ -148,6 +170,37 @@ async function floodQ100GetFeatureInfo(lat: number, lon: number): Promise<FloodQ
   return { inside: features.length > 0, featureCount: features.length };
 }
 
+async function efasGetFeatureInfo(lat: number, lon: number, layer: string, time?: string | null) {
+  const WMS_URL = "https://european-flood.emergency.copernicus.eu/api/wms/";
+  const d = 0.0007;
+  const minLat = lat - d;
+  const minLon = lon - d;
+  const maxLat = lat + d;
+  const maxLon = lon + d;
+  const width = 256;
+  const height = 256;
+  const i = 128;
+  const j = 128;
+
+  const url =
+    `${WMS_URL}?service=WMS&request=GetFeatureInfo&version=1.3.0` +
+    `&crs=EPSG:4326` +
+    `&bbox=${encodeURIComponent(`${minLat},${minLon},${maxLat},${maxLon}`)}` +
+    `&width=${width}&height=${height}` +
+    `&layers=${encodeURIComponent(layer)}` +
+    `&query_layers=${encodeURIComponent(layer)}` +
+    `&info_format=${encodeURIComponent("application/json")}` +
+    `&i=${i}&j=${j}` +
+    (time ? `&time=${encodeURIComponent(time)}` : "");
+
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`EFAS GetFeatureInfo error: ${res.status}`);
+
+  const json: any = await res.json().catch(() => null);
+  const features = Array.isArray(json?.features) ? json.features : [];
+  return { inside: features.length > 0, featureCount: features.length, layer, time };
+}
+
 async function meteoActual(lat: number, lon: number): Promise<WeatherNow> {
   const key = process.env.OPENWEATHER_API_KEY;
   if (!key) {
@@ -187,7 +240,7 @@ async function meteoActual(lat: number, lon: number): Promise<WeatherNow> {
 export async function POST(req: Request) {
   const startedAt = Date.now();
   const limitations: string[] = [];
-  const sources: Record<string, string> = {};
+  const sources: SourcesMap = {};
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -200,10 +253,26 @@ export async function POST(req: Request) {
     // 1) Coordenadas
     if (latIn !== null && lonIn !== null) {
       coords = { lat: latIn, lon: lonIn, label: address || undefined };
+      // Si no hay address pero sí coords, intenta reverse geocode para dar contexto al informe.
+      try {
+        const rev = await reverseGeocode(latIn, lonIn);
+        if (rev?.label) {
+          coords.label = rev.label;
+          sources.nominatim_reverse = {
+            name: "OpenStreetMap Nominatim (reverse geocoding)",
+            url: "https://nominatim.openstreetmap.org/",
+          };
+        }
+      } catch {
+        limitations.push("No se pudo obtener nombre de localidad (reverse geocode).");
+      }
     } else if (address) {
       const geo = await buscarCoordenadas(address);
       coords = { lat: geo.lat, lon: geo.lon, label: geo.label };
-      sources.nominatim = "OpenStreetMap Nominatim (geocoding)";
+      sources.nominatim = {
+        name: "OpenStreetMap Nominatim (geocoding)",
+        url: "https://nominatim.openstreetmap.org/",
+      };
     } else {
       return NextResponse.json(
         { error: "Debes enviar address o (lat, lon)." },
@@ -214,42 +283,70 @@ export async function POST(req: Request) {
     const lat = coords.lat;
     const lon = coords.lon;
 
-    // 2) Infra (OSM Overpass)
-    let urban: any = null;
+  // 2) Infra (OSM Overpass)
+  let urban: any = null;
+  try {
+    urban = await capasUrbanismo(lat, lon);
+    sources.overpass = {
+      name: "OpenStreetMap Overpass API (infraestructura/POIs)",
+      url: "https://overpass-api.de/api/interpreter",
+    };
+  } catch {
+    urban = null;
+    limitations.push("No se pudo obtener infraestructura cercana (Overpass).");
+  }
+
+  // 3) Meteo (OpenWeather)
+  let meteo: WeatherNow | null = null;
+  try {
+    meteo = await meteoActual(lat, lon);
+    sources.openweather = {
+      name: "OpenWeather Current (data/2.5/weather)",
+      url: "https://openweathermap.org/current",
+    };
+  } catch {
+    meteo = null;
+    limitations.push("No se pudo obtener meteorología actual (OpenWeather).");
+  }
+
+  // 4) Q100 (WMS GetFeatureInfo)
+  let floodQ100: FloodQ100Check | null = null;
+  try {
+    floodQ100 = await floodQ100GetFeatureInfo(lat, lon);
+    sources.floodWms = {
+      name: "MITECO/SNCZI WMS ZI_LaminasQ100 (NZ.RiskZone) GetFeatureInfo",
+      url: "https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100",
+    };
+  } catch {
+    floodQ100 = null;
+    limitations.push("No se pudo consultar la capa Q100 (WMS GetFeatureInfo).");
+  }
+
+  // 5) Riesgo dinámico
+  const dynamicFloodRisk =
+    floodQ100 && meteo ? riskFrom(floodQ100.inside, meteo.rain1hMm) : null;
+
+  // 6) EFAS (opcional, si se configura una capa por defecto)
+  const efasLayerEnv = process.env.EFAS_LAYER_DEFAULT;
+  const efasTimeEnv = process.env.EFAS_TIME_DEFAULT || null;
+  let efas: EfasCheck | null = null;
+  if (efasLayerEnv) {
     try {
-      urban = await capasUrbanismo(lat, lon);
-      sources.overpass = "OpenStreetMap Overpass API (infraestructura/POIs)";
+      efas = await efasGetFeatureInfo(lat, lon, efasLayerEnv, efasTimeEnv);
+      sources.efas = {
+        name: `Copernicus EFAS (${efasLayerEnv})`,
+        url: "https://european-flood.emergency.copernicus.eu/",
+      };
     } catch {
-      urban = null;
-      limitations.push("No se pudo obtener infraestructura cercana (Overpass).");
+      efas = null;
+      limitations.push("No se pudo consultar la capa EFAS (Copernicus).");
     }
+  } else {
+    limitations.push("EFAS no configurado (añade EFAS_LAYER_DEFAULT en .env).");
+  }
 
-    // 3) Meteo (OpenWeather)
-    let meteo: WeatherNow | null = null;
-    try {
-      meteo = await meteoActual(lat, lon);
-      sources.openweather = "OpenWeather Current (data/2.5/weather)";
-    } catch {
-      meteo = null;
-      limitations.push("No se pudo obtener meteorología actual (OpenWeather).");
-    }
-
-    // 4) Q100 (WMS GetFeatureInfo)
-    let floodQ100: FloodQ100Check | null = null;
-    try {
-      floodQ100 = await floodQ100GetFeatureInfo(lat, lon);
-      sources.floodWms = "MITECO/SNCZI WMS ZI_LaminasQ100 (NZ.RiskZone) GetFeatureInfo";
-    } catch {
-      floodQ100 = null;
-      limitations.push("No se pudo consultar la capa Q100 (WMS GetFeatureInfo).");
-    }
-
-    // 5) Riesgo dinámico
-    const dynamicFloodRisk =
-      floodQ100 && meteo ? riskFrom(floodQ100.inside, meteo.rain1hMm) : null;
-
-    // 6) Informe IA
-    const openaiKey = process.env.OPENAI_API_KEY;
+  // 6) Informe IA
+  const openaiKey = process.env.OPENAI_API_KEY;
     if (!openaiKey) {
       limitations.push("Falta OPENAI_API_KEY: no se pudo generar el informe IA.");
     }
@@ -264,24 +361,29 @@ export async function POST(req: Request) {
         meteo,
         floodQ100,
         dynamicFloodRisk,
+        efas,
         sources,
         limitations,
       };
 
       const prompt = `
-Eres un asistente técnico que redacta un informe profesional de análisis geoespacial.
-Reglas:
-- Solo usa los datos proporcionados en JSON. NO inventes fuentes ni datos.
-- Si un bloque es null o faltan datos, decláralo como LIMITACIÓN.
-- Q100 significa zona inundable estadística (T=100). No afirmes “inundación activa”.
-- Escribe un informe claro con secciones:
+Eres un analista geoespacial. Redacta un informe conciso y profesional SOLO con los datos del JSON.
 
-1) Descripción de la zona
-2) Infraestructura cercana (según "urban")
-3) Riesgos relevantes (incluye "floodQ100" y "dynamicFloodRisk" y meteo)
-4) Posibles usos urbanos (prudentes)
-5) Recomendación final
-6) Fuentes y limitaciones (lista)
+Instrucciones estrictas:
+- NO inventes ni alucines. Si falta un dato, dilo como LIMITACIÓN.
+- Q100 es riesgo estadístico (T=100 años). No afirmes inundación activa.
+- Incluye SIEMPRE estas secciones, en este orden:
+  1) Descripción de la zona (usa label si existe; si no, coords)
+  2) Infraestructura cercana (resumen de urban: total y categorías clave)
+  3) Riesgos relevantes:
+     - Q100 (floodQ100: inside/featureCount o LIMITACIÓN)
+     - EFAS (efas: inside/featureCount o LIMITACIÓN)
+     - Riesgo dinámico (dynamicFloodRisk o LIMITACIÓN)
+     - Meteo actual (meteo: temp, lluvia 1h, viento) o LIMITACIÓN
+  4) Posibles usos urbanos (prudentes)
+  5) Recomendación final (sintética)
+  6) Fuentes y limitaciones (lista)
+- Si hay fuentes, cita nombre y URL cuando esté disponible.
 
 Datos (JSON):
 ${JSON.stringify(payloadForModel, null, 2)}
@@ -305,6 +407,7 @@ ${JSON.stringify(payloadForModel, null, 2)}
         meteo,
         floodQ100,
         dynamicFloodRisk,
+        efas,
         sources,
         limitations,
         report,

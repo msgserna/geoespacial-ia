@@ -42,7 +42,14 @@ export function SourcesLimitations({
           {safeSources.length ? (
             safeSources.map((s, i) => (
               <li key={i}>
-                <b>{s.name}:</b> {s.url}
+                <b>{s.name}:</b>{" "}
+                {typeof s.url === "string" && /^https?:\/\//i.test(s.url) ? (
+                  <a href={s.url} target="_blank" rel="noreferrer" className="underline text-primary">
+                    {s.url}
+                  </a>
+                ) : (
+                  s.url
+                )}
                 {s.note ? ` — ${s.note}` : ""}
               </li>
             ))

@@ -23,20 +23,20 @@ type MapViewProps = {
   value?: LatLon | null;
   onPick: (coords: LatLon) => void;
 
-  // Base map
   baseLayer?: BaseLayer;
 
-  // OpenWeather overlay (vía proxy backend)
   weatherLayer?: WeatherLayer | null;
-  weatherOpacity?: number; // 0..1
+  weatherOpacity?: number;
 
-  // Flood overlay (WMS Q100)
   floodOn?: boolean;
 
-  // UI flotante encima del mapa (top-right)
-  overlay?: React.ReactNode;
+  // EFAS
+  efasOn?: boolean;
+  efasLayer?: string | null;
+  efasOpacity?: number;
+  efasTime?: string | null;
 
-  // UI flotante (bottom-left)
+  overlay?: React.ReactNode;
   bottomLeftOverlay?: React.ReactNode;
 };
 
@@ -56,6 +56,12 @@ export function MapView({
   weatherLayer = null,
   weatherOpacity = 0.8,
   floodOn = false,
+
+  efasOn = false,
+  efasLayer = null,
+  efasOpacity = 0.6,
+  efasTime = null,
+
   overlay,
   bottomLeftOverlay,
 }: MapViewProps) {
@@ -63,15 +69,12 @@ export function MapView({
     (async () => {
       try {
         await import("leaflet-defaulticon-compatibility");
-      } catch {
-        // Si falla, solo afecta a iconos del marker.
-      }
+      } catch {}
     })();
   }, []);
 
   const center = useMemo<[number, number]>(() => {
     if (value) return [value.lat, value.lon];
-    // Default: Madrid
     return [40.4167, -3.7033];
   }, [value]);
 
@@ -90,35 +93,22 @@ export function MapView({
     '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> ' +
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-  // Proxy interno: no expone la API key de OpenWeather
   const weatherUrl = weatherLayer
     ? `/api/weather/tiles/${weatherLayer}/{z}/{x}/{y}.png`
     : null;
 
   return (
-    <div className="relative h-[70vh] w-full overflow-hidden rounded-xl border md:h-[calc(100vh-3.5rem)]">
-      {/* Overlay UI flotante encima del mapa (top-right) */}
-      {overlay ? (
-        <div className="absolute right-3 top-3 z-[1200]">
-          {overlay}
-        </div>
-      ) : null}
-
-      {/* ✅ Overlay UI flotante (bottom-left) */}
+    <div className="relative h-full min-h-screen w-full overflow-hidden">
+      {overlay ? <div className="absolute right-3 top-3 z-[1200]">{overlay}</div> : null}
       {bottomLeftOverlay ? (
-        <div className="absolute bottom-3 left-3 z-[1200]">
+        <div className="absolute bottom-4 left-1/2 z-[1200] -translate-x-1/2 transform">
           {bottomLeftOverlay}
         </div>
       ) : null}
 
       <MapContainer center={center} zoom={value ? 14 : 6} className="h-full w-full">
-        {/* Base map */}
         {isSatellite ? (
-          <TileLayer
-            attribution={attributionMapbox}
-            url={mapboxSatelliteUrl!}
-            maxZoom={19}
-          />
+          <TileLayer attribution={attributionMapbox} url={mapboxSatelliteUrl!} maxZoom={19} />
         ) : (
           <TileLayer
             attribution={attributionOSM}
@@ -127,7 +117,6 @@ export function MapView({
           />
         )}
 
-        {/* OpenWeather overlay */}
         {weatherUrl ? (
           <TileLayer
             url={weatherUrl}
@@ -136,7 +125,7 @@ export function MapView({
           />
         ) : null}
 
-        {/* Flood overlay (Q100) — WMS */}
+        {/* Q100 (WMS) */}
         {floodOn ? (
           <WMSTileLayer
             url="https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100"
@@ -145,13 +134,28 @@ export function MapView({
             transparent
             version="1.3.0"
             opacity={0.65}
+            zIndex={650}
           />
         ) : null}
 
-        {/* Click handler */}
+        {/* EFAS (Copernicus) — WMS-T overlay */}
+        {efasOn && efasLayer ? (
+          <WMSTileLayer
+            key={`efas-${efasLayer}-${efasTime ?? "notime"}`} // ✅ fuerza remount al cambiar capa/tiempo
+            url="https://european-flood.emergency.copernicus.eu/api/wms/"
+            layers={efasLayer}
+            format="image/png"
+            transparent
+            version="1.3.0"
+            opacity={Math.min(1, Math.max(0, efasOpacity))}
+            zIndex={700}
+            // ✅ params extra (TIME + cache-buster)
+            {...(({ time: efasTime || undefined, _ts: `${efasLayer}-${efasTime ?? "notime"}` } as unknown) as any)}
+          />
+        ) : null}
+
         <ClickHandler onPick={onPick} />
 
-        {/* Marker */}
         {value ? (
           <Marker position={[value.lat, value.lon]}>
             <Popup>

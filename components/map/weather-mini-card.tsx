@@ -20,7 +20,7 @@ type FloodInfo = {
 function riskFrom(inside: boolean, rain1hMm: number | null) {
   if (!inside) return { level: "Bajo" as const, reason: "Fuera de Q100" };
   if (rain1hMm == null) return { level: "Medio" as const, reason: "En Q100, sin dato lluvia 1h" };
-  if (rain1hMm < 1) return { level: "Medio" as const, reason: "En Q100, lluvia débil" };
+  if (rain1hMm < 1) return { level: "Medio" as const, reason: "En Q100, lluvia debil" };
   if (rain1hMm < 5) return { level: "Alto" as const, reason: "En Q100, lluvia moderada" };
   return { level: "Muy alto" as const, reason: "En Q100, lluvia intensa" };
 }
@@ -76,7 +76,7 @@ export function WeatherMiniCard({ coords }: { coords: LatLon | null }) {
         if (!ac.signal.aborted) {
           setWx(null);
           setFlood(null);
-          setErrMsg(e?.message ?? "Error cargando meteo/inundación");
+          setErrMsg(e?.message ?? "Error cargando meteo/inundacion");
         }
       } finally {
         if (!ac.signal.aborted) setLoading(false);
@@ -97,64 +97,51 @@ export function WeatherMiniCard({ coords }: { coords: LatLon | null }) {
   const badgeVariant = risk.level === "Bajo" ? "secondary" : "default";
 
   return (
-    <Card className="w-[230px] rounded-2xl border bg-background/90 p-3 shadow-lg backdrop-blur">
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-muted-foreground">Meteo</div>
-        <Badge variant={badgeVariant} className="gap-1">
-          <Waves className="h-3.5 w-3.5" />
-          {risk.level}
-        </Badge>
-      </div>
-
-      <div className="mt-1 text-[11px] text-muted-foreground">
-        Riesgo inundación (Q100 + lluvia): {risk.reason}
-      </div>
-
+    <Card className="w-full max-w-[720px] rounded-2xl border bg-background/90 p-3 shadow-lg backdrop-blur">
       {errMsg ? (
-        <div className="mt-3 flex items-start gap-2 rounded-md border p-2 text-xs">
-          <AlertTriangle className="mt-0.5 h-4 w-4" />
+        <div className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
+          <AlertTriangle className="h-4 w-4" />
           <div className="leading-snug">
             <div className="font-medium">No disponible</div>
             <div className="text-muted-foreground">{errMsg}</div>
           </div>
         </div>
       ) : (
-        <div className="mt-3 space-y-2 text-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Thermometer className="h-4 w-4" />
-              <span>Temp</span>
-            </div>
-            <span className="tabular-nums">
-              {loading ? "—" : wx?.tempC?.toFixed(1) ?? "—"}°C
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Badge className="gap-1">
+            <span className="text-foreground text-white">Riesgo</span>
+              <Waves className="h-3.5 w-3.5" />
+              {risk.level}
+            </Badge>
+            <span>({risk.reason})</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Thermometer className="h-4 w-4" />
+            <span className="text-xs text-muted-foreground">Temp</span>
+            <span className="tabular-nums font-medium">
+              {loading ? "--" : wx?.tempC?.toFixed(1) ?? "--"} C
             </span>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Wind className="h-4 w-4" />
-              <span>Viento</span>
-            </div>
-            <span className="tabular-nums">
-              {loading ? "—" : wx?.windMs?.toFixed(1) ?? "—"} m/s
+          <div className="flex items-center gap-1.5">
+            <Wind className="h-4 w-4" />
+            <span className="text-xs text-muted-foreground">Viento</span>
+            <span className="tabular-nums font-medium">
+              {loading ? "--" : wx?.windMs?.toFixed(1) ?? "--"} m/s
             </span>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CloudRain className="h-4 w-4" />
-              <span>Lluvia 1h</span>
-            </div>
-            <span className="tabular-nums">
-              {loading ? "—" : wx?.rain1hMm?.toFixed(1) ?? "0.0"} mm
+          <div className="flex items-center gap-1.5">
+            <CloudRain className="h-4 w-4" />
+            <span className="text-xs text-muted-foreground">Lluvia 1h</span>
+            <span className="tabular-nums font-medium">
+              {loading ? "--" : wx?.rain1hMm?.toFixed(1) ?? "0.0"} mm
             </span>
           </div>
         </div>
       )}
-
-      <div className="mt-3 text-[11px] text-muted-foreground">
-        Fuentes: OpenWeather (current) + WMS Q100 (GetFeatureInfo).
-      </div>
     </Card>
   );
 }

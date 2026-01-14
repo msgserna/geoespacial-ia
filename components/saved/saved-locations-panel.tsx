@@ -56,10 +56,14 @@ export function SavedLocationsPanel({
                           {it.coords.lat.toFixed(5)}, {it.coords.lon.toFixed(5)}
                         </Badge>
                         <Badge variant="outline">
-                          {it.snapshot?.data?.urban?.ok ? "Urban: OK" : "Urban: —"}
+                          {(it.snapshot?.data?.urban?.ok ?? Boolean((it.snapshot as any)?.urban))
+                            ? "Urban: OK"
+                            : "Urban: -"}
                         </Badge>
                         <Badge variant="outline">
-                          {it.snapshot?.data?.flood?.ok ? "Flood: OK" : "Flood: —"}
+                          {(it.snapshot?.data?.flood?.ok ?? Boolean((it.snapshot as any)?.floodQ100))
+                            ? "Flood: OK"
+                            : "Flood: -"}
                         </Badge>
                       </div>
                     </div>
