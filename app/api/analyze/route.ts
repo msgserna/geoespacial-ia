@@ -27,12 +27,20 @@ type EfasCheck = {
   time?: string | null;
 };
 
+type AirQuality = {
+  aqi: number | null;
+  pm2_5: number | null;
+  pm10: number | null;
+  no2: number | null;
+  o3: number | null;
+};
+
 type SourcesMap = Record<string, { name: string; url: string; note?: string }>;
 
 function riskFrom(inside: boolean, rain1hMm: number | null) {
   if (!inside) return { level: "Bajo" as const, reason: "Fuera de Q100" };
   if (rain1hMm == null) return { level: "Medio" as const, reason: "En Q100, sin dato lluvia 1h" };
-  if (rain1hMm < 1) return { level: "Medio" as const, reason: "En Q100, lluvia debil" };
+  if (rain1hMm < 1) return { level: "Medio" as const, reason: "En Q100, lluvia débil" };
   if (rain1hMm < 5) return { level: "Alto" as const, reason: "En Q100, lluvia moderada" };
   return { level: "Muy alto" as const, reason: "En Q100, lluvia intensa" };
 }
@@ -108,12 +116,12 @@ async function buscarCoordenadas(address: string) {
 
   if (!res.ok) throw new Error(`Nominatim error: ${res.status}`);
   const data: any[] = await res.json();
-  if (!data?.length) throw new Error("No se encontraron coordenadas para la direcciÃ³n.");
+  if (!data?.length) throw new Error("No se encontraron coordenadas para la dirección.");
 
   const item = data[0];
   const lat = asNum(item?.lat);
   const lon = asNum(item?.lon);
-  if (lat === null || lon === null) throw new Error("Respuesta invÃ¡lida de Nominatim.");
+  if (lat === null || lon === null) throw new Error("Respuesta inválida de Nominatim.");
 
   return { lat, lon, label: item?.display_name ?? address };
 }
@@ -384,7 +392,7 @@ async function meteoActual(lat: number, lon: number): Promise<WeatherNow> {
     String(lat)
   )}&lon=${encodeURIComponent(
     String(lon)
-  )}&units=metric&appid=${encodeURIComponent(key)}`;
+  )}&units=metric&lang=es&appid=${encodeURIComponent(key)}`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`OpenWeather current error: ${res.status}`);
@@ -399,6 +407,31 @@ async function meteoActual(lat: number, lon: number): Promise<WeatherNow> {
     rain1hMm: data?.rain?.["1h"] ?? null,
     rain3hMm: data?.rain?.["3h"] ?? null,
     description: data?.weather?.[0]?.description ?? null,
+  };
+}
+
+async function calidadAire(lat: number, lon: number): Promise<AirQuality> {
+  const key = process.env.OPENWEATHER_API_KEY;
+  if (!key) {
+    return { aqi: null, pm2_5: null, pm10: null, no2: null, o3: null };
+  }
+
+  const url = `https://api.openweathermap.org/data/2.5/air_pollution?lat=${encodeURIComponent(
+    String(lat)
+  )}&lon=${encodeURIComponent(String(lon))}&appid=${encodeURIComponent(key)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OpenWeather air pollution error: ${res.status}`);
+
+  const data: any = await res.json();
+  const item = Array.isArray(data?.list) ? data.list[0] : null;
+
+  return {
+    aqi: typeof item?.main?.aqi === "number" ? item.main.aqi : null,
+    pm2_5: typeof item?.components?.pm2_5 === "number" ? item.components.pm2_5 : null,
+    pm10: typeof item?.components?.pm10 === "number" ? item.components.pm10 : null,
+    no2: typeof item?.components?.no2 === "number" ? item.components.no2 : null,
+    o3: typeof item?.components?.o3 === "number" ? item.components.o3 : null,
   };
 }
 
@@ -470,8 +503,9 @@ export async function POST(req: Request) {
       limitations.push("No se pudo obtener infraestructura cercana (Overpass).");
     }
 
-    // 3) Meteo (OpenWeather)
+    // 3) Meteo + calidad del aire (OpenWeather)
     let meteo: WeatherNow | null = null;
+    let air: AirQuality | null = null;
     try {
       meteo = await meteoActual(lat, lon);
       sources.openweather = {
@@ -481,6 +515,17 @@ export async function POST(req: Request) {
     } catch {
       meteo = null;
       limitations.push("No se pudo obtener meteorologia actual (OpenWeather).");
+    }
+
+    try {
+      air = await calidadAire(lat, lon);
+      sources.openweather_air = {
+        name: "OpenWeather Air Pollution (data/2.5/air_pollution)",
+        url: "https://openweathermap.org/api/air-pollution",
+      };
+    } catch {
+      air = null;
+      limitations.push("No se pudo obtener contaminacion del aire (OpenWeather).");
     }
 
     // 4) Q100 (WMS GetFeatureInfo)
@@ -558,6 +603,7 @@ export async function POST(req: Request) {
         },
         urban,
         meteo,
+        air,
         floodQ100,
         dynamicFloodRisk,
         efas,
@@ -572,20 +618,24 @@ Formato estricto:
 - No uses Markdown (sin #, sin **, sin listas con guiones).
 - Usa texto plano con numeracion "1.", "2.", etc.
 - Si falta un dato, escribe "LIMITACION: <motivo>".
-- Q100 es riesgo estadistico (T=100 anos). No afirmes inundacion activa.
-- Si una capa no esta activada (layers.* = false), indica "No activada por el usuario" y no como LIMITACION.
+- Q100 (MITECO) es riesgo estadistico (T=100 anos). No afirmes inundacion activa.
+- Si EFAS no esta activada (layers.efasOn = false), omite esa linea por completo.
+- En cada seccion redacta 2-4 frases con analisis breve (conclusiones prudentes) basadas en los datos; no solo enumeres.
+- El titulo de cada seccion debe ir en su propia linea con ":" al final. El contenido va en lineas separadas debajo.
+- En Infraestructura cercana evita listar cada categoria en lineas separadas; resume en 1-2 frases con las categorias clave.
 
 Secciones obligatorias, en este orden:
 1. Descripcion de la zona (usa label si existe; si no, coords)
-2. Infraestructura cercana (resumen de urban: total y categorias clave)
+2. Infraestructura cercana (resumen de urban: total y categorias clave) y un breve analisis del tipo de actividad urbana.
 3. Riesgos relevantes:
-   Q100: si inside=false, escribe "No se detecta interseccion con zona Q100"; si inside=true, indica que el punto cae en zona Q100.
-   EFAS: si inside=false, escribe "No se detecta interseccion con la capa EFAS seleccionada"; si inside=true, indica que el punto cae en la capa.
-   Riesgo dinamico (dynamicFloodRisk o LIMITACION)
-   Meteo actual: escribe cada dato en su propia linea (Temperatura, Lluvia 1h, Viento, Descripcion).
+   MITECO (Q100): si inside=false, escribe "No se detecta interseccion con zona Q100"; si inside=true, indica que el punto cae en zona Q100.
+   EFAS (solo si layers.efasOn=true): si inside=false, escribe "No se detecta interseccion con la capa EFAS seleccionada"; si inside=true, indica que el punto cae en la capa.
+   Riesgo dinamico (dynamicFloodRisk o LIMITACION) y una frase de interpretacion.
+   Meteo actual: escribe cada dato en su propia linea (Temperatura, Lluvia 1h, Viento, Descripcion) y despues 2 frases de interpretacion.
+   Contaminacion del aire: escribe cada dato en su propia linea (AQI, PM2.5, PM10, NO2, O3) o LIMITACION y despues 2 frases de interpretacion.
    Si lluvia 1h no esta disponible, escribe "No se preven lluvias".
-4. Posibles usos urbanos (prudentes)
-5. Recomendacion final (sintetica)
+4. Posibles usos urbanos (prudentes) con 2-3 frases justificadas por los datos.
+5. Recomendacion final (sintetica, 2-3 frases)
 6. Fuentes y limitaciones (lista breve)
 
 Datos (JSON):
@@ -598,6 +648,12 @@ ${JSON.stringify(payloadForModel, null, 2)}
       });
 
       report = cleanReportText(resp.output_text || "");
+      if (!efasOn) {
+        report = report
+          .replace(/^\s*EFAS\s*:\s*.*$/gim, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
     }
 
     const endedAt = Date.now();
@@ -607,8 +663,15 @@ ${JSON.stringify(payloadForModel, null, 2)}
         ok: true,
         coords: { lat, lon, label: coords.label ?? null },
         mapImageUrl: buildMapImageUrl(lat, lon),
+        layers: {
+          floodOn,
+          efasOn,
+          efasLayer: efasOn ? efasLayerFinal || null : null,
+          efasTime: efasOn ? efasTimeFinal || null : null,
+        },
         urban,
         meteo,
+        air,
         floodQ100,
         dynamicFloodRisk,
         efas,

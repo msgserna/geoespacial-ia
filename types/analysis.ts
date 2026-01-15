@@ -89,6 +89,13 @@ export type AnalysisResponse = {
   floodQ100?: unknown;
   dynamicFloodRisk?: DynamicFloodRisk | null;
   efas?: unknown;
+  air?: unknown;
+  layers?: {
+    floodOn?: boolean;
+    efasOn?: boolean;
+    efasLayer?: string | null;
+    efasTime?: string | null;
+  };
 
   report: string;
   sources: SourceRef[] | Record<string, any>;

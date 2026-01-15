@@ -203,6 +203,11 @@
     display: none !important;
   }
 
+  /* Acento en negritas del informe */
+  #print-area b {
+    color: var(--primary) !important;
+  }
+
   /* Si algún contenedor interno tenía scroll, en print debe expandirse */
   * {
     overflow: visible !important;

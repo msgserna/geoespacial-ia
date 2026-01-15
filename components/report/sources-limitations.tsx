@@ -41,16 +41,16 @@ export function SourcesLimitations({
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
           {safeSources.length ? (
             safeSources.map((s, i) => (
-              <li key={i}>
+              <li key={i} className="break-words">
                 <b>{s.name}:</b>{" "}
                 {typeof s.url === "string" && /^https?:\/\//i.test(s.url) ? (
-                  <a href={s.url} target="_blank" rel="noreferrer" className="underline text-primary">
+                  <a href={s.url} target="_blank" rel="noreferrer" className="break-all underline text-primary">
                     {s.url}
                   </a>
                 ) : (
                   s.url
                 )}
-                {s.note ? ` — ${s.note}` : ""}
+                {s.note ? ` - ${s.note}` : ""}
               </li>
             ))
           ) : (
@@ -63,7 +63,7 @@ export function SourcesLimitations({
         <div className="font-medium">Limitaciones</div>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
           {safeLimitations.length ? (
-            safeLimitations.map((l, i) => <li key={i}>{l}</li>)
+            safeLimitations.map((l, i) => <li key={i} className="break-words">{l}</li>)
           ) : (
             <li>Sin limitaciones reportadas.</li>
           )}
@@ -72,3 +72,5 @@ export function SourcesLimitations({
     </div>
   );
 }
+
+

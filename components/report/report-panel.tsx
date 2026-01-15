@@ -7,6 +7,58 @@ import type { AnalysisResponse } from "@/types/analysis";
 import { SourcesLimitations } from "@/components/report/sources-limitations";
 import { Sparkles } from "lucide-react";
 
+function splitReportSections(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const matches = [...trimmed.matchAll(/(?:^|\n)(\d+\.\s[\s\S]*?)(?=\n\d+\.\s|$)/g)];
+  if (matches.length) return matches.map((m) => m[1].trim());
+  return trimmed.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+}
+
+const SECTION_TITLES = [
+  "Descripcion de la zona",
+  "Infraestructura cercana",
+  "Riesgos relevantes",
+  "Posibles usos urbanos",
+  "Recomendacion final",
+  "Fuentes y limitaciones",
+];
+
+function parseSection(section: string) {
+  const match = section.match(/^(\d+)\.\s*([\s\S]*)$/);
+  if (!match) return null;
+
+  const number = match[1];
+  const rest = match[2].trim();
+
+  const titleHit = SECTION_TITLES.find((t) => rest.toLowerCase().startsWith(t.toLowerCase()));
+  if (titleHit) {
+    let body = rest.slice(titleHit.length).trim();
+    body = body.replace(/^:\s*/, "");
+    return {
+      title: `${number}. ${titleHit}`,
+      body,
+    };
+  }
+
+  const legacy = rest.match(/^([^:]+):\s*([\s\S]*)$/);
+  if (legacy) {
+    return {
+      title: `${number}. ${legacy[1].trim()}`,
+      body: legacy[2].trim(),
+    };
+  }
+
+  return {
+    title: `${number}.`,
+    body: rest,
+  };
+}
+
+function isInfraSection(title: string) {
+  return title.toLowerCase().includes("infraestructura cercana");
+}
+
 export function ReportPanel({
   loading,
   result,
@@ -32,7 +84,7 @@ export function ReportPanel({
 
         {loading ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Sparkles className="h-6 w-6 animate-pulse text-muted-foreground" />
+            <Sparkles className="h-6 w-6 animate-pulse text-primary" />
             Generando informe...
           </div>
         ) : !result ? (
@@ -55,8 +107,46 @@ export function ReportPanel({
                     className="mb-3 w-full rounded-md border"
                   />
                 ) : null}
-                <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-                  {result.report}
+                <div className="space-y-4 text-sm break-words">
+                  {splitReportSections(result.report).map((section, index) => {
+                    const parsed = parseSection(section);
+                    if (!parsed) {
+                      return (
+                        <p key={index} className="whitespace-pre-wrap break-words">
+                          {section}
+                        </p>
+                      );
+                    }
+
+                    const title = parsed.title;
+                    const body = parsed.body;
+                    const lines = body.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+
+                    if (isInfraSection(title)) {
+                      const joined = lines.join(" ");
+                      return (
+                        <div key={index} className="space-y-1">
+                          <div className="font-semibold text-primary">{title}</div>
+                          <div className="break-words">{joined}</div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={index} className="space-y-1">
+                        <div className="font-semibold text-primary">{title}</div>
+                        {lines.length ? (
+                          lines.map((line, idx) => (
+                            <div key={idx} className={/https?:\/\//i.test(line) ? "break-all" : undefined}>
+                              {line}
+                            </div>
+                          ))
+                        ) : (
+                          <div>{body}</div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </TabsContent>
 

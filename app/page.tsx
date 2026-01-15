@@ -430,6 +430,17 @@ export default function Page() {
             <div className="grid grid-cols-3 gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <Button size="lg" variant="outline" disabled aria-label="Proximamente">
+                    <Sparkles className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Proximamente
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button
                     size="lg"
                     variant="outline"
@@ -480,12 +491,20 @@ export default function Page() {
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="lg" variant="outline" disabled aria-label="Proximamente">
-                    <Sparkles className="h-5 w-5" />
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    disabled={!result}
+                    aria-label="Pdf"
+                    onClick={() =>
+                      result ? window.print() : toast.error("No hay informe para exportar")
+                    }
+                  >
+                    <FileDown className="h-5 w-5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={6}>
-                  Proximamente
+                  Pdf
                 </TooltipContent>
               </Tooltip>
 
@@ -508,25 +527,6 @@ export default function Page() {
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={6}>
                   Guardar ubicacion
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    disabled={!result}
-                    aria-label="Pdf"
-                    onClick={() =>
-                      result ? window.print() : toast.error("No hay informe para exportar")
-                    }
-                  >
-                    <FileDown className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Pdf
                 </TooltipContent>
               </Tooltip>
             </div>

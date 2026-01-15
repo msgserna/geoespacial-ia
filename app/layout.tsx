@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "MAP-IA",
+  title: "Asistente Geoespacial",
   description: "Asistente geoespacial con IA (OSM + IDEE)",
 };
 
