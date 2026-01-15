@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
+import { Manrope } from "next/font/google";
 import "./globals.css";
+import "mapbox-gl/dist/mapbox-gl.css";
 
-// Leaflet CSS (OK en Server Components)
-import "leaflet/dist/leaflet.css";
-import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
-
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
@@ -12,14 +11,21 @@ export const metadata: Metadata = {
   description: "Asistente geoespacial con IA (OSM + IDEE)",
 };
 
+const manrope = Manrope({
+  subsets: ["latin"],
+  display: "swap",
+});
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
-      <body>
-        {children}
-        <Toaster richColors position="top-right" closeButton />
+    <html lang="es" suppressHydrationWarning>
+      <body className={manrope.className}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          {children}
+          <Toaster richColors position="top-right" closeButton />
+        </ThemeProvider>
       </body>
     </html>
   );

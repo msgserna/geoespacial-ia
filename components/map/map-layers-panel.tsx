@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -6,12 +6,15 @@ import {
   Layers,
   Map as MapIcon,
   Satellite,
+  Mountain,
+  Moon,
   Thermometer,
   CloudRain,
   Cloud,
   Wind,
   Waves,
   Globe,
+  Cuboid,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,7 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 
-type BaseMap = "streets" | "satellite";
+type BaseMap = "streets" | "satellite" | "outdoors" | "dark";
 type Weather = "none" | "temp" | "precipitation" | "clouds" | "wind";
 
 type EfasLayerInfo = {
@@ -61,6 +64,9 @@ type Props = {
   onEfasLayerChange: (v: string | null) => void;
   efasOpacity: number; // 0..1
   onEfasOpacityChange: (v: number) => void;
+
+  terrain3d: boolean;
+  onTerrain3dToggle: () => void;
 };
 
 export default function MapLayersPanel({
@@ -86,6 +92,9 @@ export default function MapLayersPanel({
   onEfasLayerChange,
   efasOpacity,
   onEfasOpacityChange,
+
+  terrain3d,
+  onTerrain3dToggle,
 }: Props) {
   const opacityPct = useMemo(() => Math.round(opacity * 100), [opacity]);
   const efasOpacityPct = useMemo(() => Math.round(efasOpacity * 100), [efasOpacity]);
@@ -136,7 +145,7 @@ export default function MapLayersPanel({
   }
 
   return (
-    <Card className="w-[360px] shadow-lg">
+    <Card className="glass-panel w-[360px] shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between py-3">
         <div className="text-sm font-semibold flex items-center gap-2">
           <Layers className="h-4 w-4" />
@@ -167,7 +176,25 @@ export default function MapLayersPanel({
               className="justify-start gap-2"
             >
               <Satellite className="h-4 w-4" />
-              Satélite
+              Satelite
+            </Button>
+
+            <Button
+              variant={baseMap === "outdoors" ? "default" : "outline"}
+              onClick={() => onBaseMapChange("outdoors")}
+              className="justify-start gap-2"
+            >
+              <Mountain className="h-4 w-4" />
+              Outdoors
+            </Button>
+
+            <Button
+              variant={baseMap === "dark" ? "default" : "outline"}
+              onClick={() => onBaseMapChange("dark")}
+              className="justify-start gap-2"
+            >
+              <Moon className="h-4 w-4" />
+              Dark
             </Button>
           </div>
         </div>
@@ -245,7 +272,7 @@ export default function MapLayersPanel({
             <Waves className="h-4 w-4" />
             Inundaciones (Q100)
           </Button>
-          <div className="text-xs text-muted-foreground">Capa WMS oficial (T=100 años).</div>
+          <div className="text-xs text-muted-foreground">Capa WMS oficial (T=100 anos).</div>
         </div>
 
         <Separator />
@@ -274,7 +301,7 @@ export default function MapLayersPanel({
                 const next = e.target.value || null;
                 onEfasLayerChange(next);
 
-                // ✅ al cambiar capa, EFAS queda activo
+                // When layer changes, ensure EFAS is active.
                 if (next && !efasOn) onEfasEnable();
 
                 toast.message(next ? "Capa EFAS seleccionada" : "Capa EFAS deseleccionada");
@@ -307,6 +334,21 @@ export default function MapLayersPanel({
               onValueChange={(v) => onEfasOpacityChange((v[0] ?? 0) / 100)}
             />
           </div>
+        </div>
+
+        <Separator />
+
+        {/* 3D */}
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">TERRENO 3D</div>
+          <Button
+            variant={terrain3d ? "default" : "outline"}
+            onClick={onTerrain3dToggle}
+            className="w-full justify-start gap-2"
+          >
+            <Cuboid className="h-4 w-4" />
+            3D Terrain
+          </Button>
         </div>
       </CardContent>
     </Card>

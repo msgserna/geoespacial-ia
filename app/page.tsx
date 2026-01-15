@@ -7,9 +7,12 @@ import type { AnalysisResponse, LatLon } from "@/types/analysis";
 import { AddressSearch } from "@/components/search/address-search";
 import { ReportPanel } from "@/components/report/report-panel";
 
+import { useTheme } from "next-themes";
+
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { MapPin, FileDown, Save, Bookmark } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { MapPin, FileDown, Save, Bookmark, Eraser, Sparkles, Moon, Sun } from "lucide-react";
 
 import { toast } from "sonner";
 
@@ -38,10 +41,13 @@ const MapView = dynamic(() => import("@/components/map/map-view").then((m) => m.
 });
 
 export default function Page() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<LatLon | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [geocodeLoading, setGeocodeLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +57,9 @@ export default function Page() {
 
   // Layers
   const [layersOpen, setLayersOpen] = useState(false);
-  const [baseMap, setBaseMap] = useState<"streets" | "satellite">("streets");
+  const [baseMap, setBaseMap] = useState<"streets" | "satellite" | "outdoors" | "dark">(
+    "streets"
+  );
 
   const [weather, setWeather] = useState<"none" | "temp" | "precipitation" | "clouds" | "wind">(
     "none"
@@ -67,6 +75,13 @@ export default function Page() {
   const [efasTime, setEfasTime] = useState<string | null>(null);
 
   const hasMapboxToken = !!process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const [terrain3d, setTerrain3d] = useState(false);
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const hasResults = loading || !!result || !!error;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Normaliza la respuesta del API a la forma que consumen los paneles (data.*),
   // sin perder la estructura original que ya se imprime/guarda.
@@ -115,12 +130,27 @@ export default function Page() {
       dataBlock.efas = (raw.data as any).efas;
     }
 
+    const mapImageUrl =
+      raw?.mapImageUrl ||
+      (mapboxToken && coordsSafe?.lat && coordsSafe?.lon
+        ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+0f766e(${coordsSafe.lon},${coordsSafe.lat})/${coordsSafe.lon},${coordsSafe.lat},14,0/800x420?access_token=${encodeURIComponent(
+            mapboxToken
+          )}`
+        : null);
+
+    const normalizedSources = Array.isArray(raw?.sources)
+      ? raw.sources
+      : raw?.sources && typeof raw.sources === "object"
+        ? Object.values(raw.sources)
+        : [];
+
     return {
       ...raw,
       coords: coordsSafe,
+      mapImageUrl,
       data: dataBlock,
       report: raw?.report ?? "",
-      sources: (raw?.sources as any) ?? [],
+      sources: normalizedSources,
       limitations: Array.isArray(raw?.limitations) ? raw.limitations : [],
     };
   }
@@ -160,7 +190,15 @@ export default function Page() {
     return `${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}`;
   }, [coords]);
 
-  async function analyze(payload: { address?: string; lat?: number; lon?: number }) {
+  async function analyze(payload: {
+    address?: string;
+    lat?: number;
+    lon?: number;
+    floodOn?: boolean;
+    efasOn?: boolean;
+    efasLayer?: string | null;
+    efasTime?: string | null;
+  }) {
     setLoading(true);
     setError(null);
 
@@ -192,6 +230,38 @@ export default function Page() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function goToAddress() {
+    const query = address.trim();
+    if (query.length < 4) return;
+
+    setGeocodeLoading(true);
+    try {
+      const res = await fetch("/api/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: query }),
+      });
+
+      const raw = (await res.json()) as { coords?: LatLon; error?: string };
+      if (!res.ok) throw new Error(raw?.error || "No se pudo geocodificar la direccion");
+
+      if (raw?.coords) {
+        setCoords({ lat: raw.coords.lat, lon: raw.coords.lon });
+        toast.message("Ubicacion encontrada");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo geocodificar la direccion");
+    } finally {
+      setGeocodeLoading(false);
+    }
+  }
+
+  function handleSuggestionPick(s: { label: string; lat: number; lon: number }) {
+    setAddress(s.label);
+    setCoords({ lat: s.lat, lon: s.lon });
+    toast.message("Ubicacion encontrada");
   }
 
   function handleSaveCurrent() {
@@ -251,7 +321,7 @@ export default function Page() {
         <MapView
           value={coords}
           onPick={(c: LatLon) => setCoords(c)}
-          baseLayer={baseMap === "satellite" ? "satellite" : "osm"}
+          baseLayer={baseMap}
           weatherLayer={weatherLayer as any}
           weatherOpacity={weatherOpacity}
           floodOn={floodOn}
@@ -259,6 +329,7 @@ export default function Page() {
           efasLayer={efasLayer}
           efasOpacity={efasOpacity}
           efasTime={efasTime}
+          terrain3d={terrain3d}
           bottomLeftOverlay={<WeatherMiniCard coords={coords} />}
           overlay={
             <MapLayersPanel
@@ -266,8 +337,8 @@ export default function Page() {
               onOpenChange={setLayersOpen}
               baseMap={baseMap}
               onBaseMapChange={(v) => {
-                if (v === "satellite" && !hasMapboxToken) {
-                  toast.error("Configura NEXT_PUBLIC_MAPBOX_TOKEN para usar Satelite");
+                if (!hasMapboxToken) {
+                  toast.error("Configura NEXT_PUBLIC_MAPBOX_TOKEN para usar Mapbox");
                   return;
                 }
                 setBaseMap(v);
@@ -300,98 +371,176 @@ export default function Page() {
               onEfasLayerChange={setEfasLayer}
               efasOpacity={efasOpacity}
               onEfasOpacityChange={setEfasOpacity}
+              terrain3d={terrain3d}
+              onTerrain3dToggle={() => setTerrain3d((prev) => !prev)}
             />
           }
         />
       </div>
 
       <div className="pointer-events-none absolute inset-0 z-[1400] p-4 md:p-6 print:hidden">
-        <div className="pointer-events-auto flex h-full max-w-[440px] flex-col gap-4 overflow-y-auto rounded-2xl border bg-background/95 p-4 text-sm shadow-xl backdrop-blur">
+        <div
+          className={`glass-panel pointer-events-auto flex max-w-[440px] flex-col gap-4 rounded-2xl p-4 text-sm ${
+            hasResults ? "h-full overflow-y-auto" : "h-auto"
+          }`}
+        >
           <div className="flex items-start justify-between gap-2">
             <div className="text-base font-semibold">Asistente Geoespacial</div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!result}
-              onClick={() => (result ? window.print() : toast.error("No hay informe para exportar"))}
-            >
-              <FileDown className="h-4 w-4" />
-              Pdf
-            </Button>
+            <div className="flex items-center gap-2">
+              {mounted ? (
+                <>
+                  <Switch
+                    checked={theme === "dark"}
+                    onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                    aria-label="Cambiar tema"
+                  />
+                  {theme === "dark" ? (
+                    <Sun className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Moon className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </>
+              ) : (
+                <div className="h-5 w-14" />
+              )}
+            </div>
           </div>
 
           <div className="text-sm">
             <AddressSearch
               address={address}
               onAddressChange={setAddress}
-              onAnalyzeByAddress={() => analyze({ address })}
-              disabled={loading}
+              onAnalyzeByAddress={goToAddress}
+              onSuggestionPick={handleSuggestionPick}
+              disabled={loading || geocodeLoading}
             />
           </div>
 
           <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-            <Badge className="h-7 px-2 text-[11px]" variant={coords ? "default" : "secondary"}>
-              {coords ? "OK" : "Sin punto"}
-            </Badge>
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                coords ? "bg-emerald-500" : "bg-muted-foreground/60"
+              }`}
+              aria-label={coords ? "Punto seleccionado" : "Sin punto"}
+            />
             <div className="text-[11px] font-medium text-foreground">{coordLabel}</div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              className="w-1/3 text-[13px]"
-              variant="outline"
-              disabled={loading}
-              onClick={() => {
-                setAddress("");
-                setCoords(null);
-                setResult(null);
-                setError(null);
-                toast.message("Limpio");
-              }}
-            >
-              Limpiar
-            </Button>
-            <Button
-              size="sm"
-              className="w-2/3 text-[13px]"
-              variant={coords ? "default" : "secondary"}
-              disabled={!coords || loading}
-              onClick={() => coords && analyze({ lat: coords.lat, lon: coords.lon })}
-            >
-              <MapPin className="mr-2 h-4 w-4" />
-              Analizar punto
-            </Button>
-          </div>
+          <TooltipProvider>
+            <div className="grid grid-cols-3 gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    disabled={loading}
+                    aria-label="Limpiar"
+                    onClick={() => {
+                      setAddress("");
+                      setCoords(null);
+                      setResult(null);
+                      setError(null);
+                      toast.message("Limpio");
+                    }}
+                  >
+                    <Eraser className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Limpiar
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="lg"
+                    variant={coords ? "default" : "secondary"}
+                    disabled={!coords || loading}
+                    aria-label="Analizar punto"
+                    onClick={() =>
+                      coords &&
+                      analyze({
+                        lat: coords.lat,
+                        lon: coords.lon,
+                        floodOn,
+                        efasOn,
+                        efasLayer,
+                        efasTime,
+                      })
+                    }
+                  >
+                    <MapPin className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Analizar punto
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="lg" variant="outline" disabled aria-label="Proximamente">
+                    <Sparkles className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Proximamente
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="lg" variant="outline" aria-label="Guardadas" onClick={() => setSavedOpen(true)}>
+                    <Bookmark className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Guardadas
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="lg" disabled={!result || loading} aria-label="Guardar ubicacion" onClick={handleSaveCurrent}>
+                    <Save className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Guardar ubicacion
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    disabled={!result}
+                    aria-label="Pdf"
+                    onClick={() =>
+                      result ? window.print() : toast.error("No hay informe para exportar")
+                    }
+                  >
+                    <FileDown className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={6}>
+                  Pdf
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
 
           <div className="text-[11px] text-muted-foreground">
             La IA se basa en datos reales. Si una fuente no responde, se indicara como limitacion.
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              className="basis-1/2 text-[13px]"
-              variant="outline"
-              onClick={() => setSavedOpen(true)}
-            >
-              <Bookmark className="mr-2 h-4 w-4" />
-              Guardadas
-            </Button>
-            <Button
-              size="sm"
-              className="basis-1/2 text-[13px]"
-              disabled={!result || loading}
-              onClick={handleSaveCurrent}
-            >
-              <Save className="mr-2 h-4 w-4" />
-              Guardar ubicacion
-            </Button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <ReportPanel loading={loading} result={result} error={error} />
-          </div>
+          {hasResults ? (
+            <div className="min-h-0 flex-1 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <ReportPanel loading={loading} result={result} error={error} />
+            </div>
+          ) : null}
         </div>
       </div>
 

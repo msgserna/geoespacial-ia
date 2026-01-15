@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 export const runtime = "nodejs";
@@ -20,6 +20,13 @@ type FloodQ100Check = {
   featureCount: number;
 };
 
+type EfasCheck = {
+  inside: boolean;
+  featureCount: number;
+  layer?: string;
+  time?: string | null;
+};
+
 type SourcesMap = Record<string, { name: string; url: string; note?: string }>;
 
 function riskFrom(inside: boolean, rain1hMm: number | null) {
@@ -33,6 +40,56 @@ function riskFrom(inside: boolean, rain1hMm: number | null) {
 function asNum(v: any): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function buildMapImageUrl(lat: number, lon: number) {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token) return null;
+
+  const style = "mapbox/streets-v12";
+  const marker = `pin-l+0f766e(${lon},${lat})`;
+  const center = `${lon},${lat},14,0`;
+  const size = "800x420";
+
+  return `https://api.mapbox.com/styles/v1/${style}/static/${marker}/${center}/${size}?access_token=${encodeURIComponent(
+    token
+  )}`;
+}
+
+function cleanReportText(text: string) {
+  return text
+    .replace(/^\s*#+\s*/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
+    .trim();
+}
+
+function snippet(s: string, n = 240) {
+  return (s || "").replace(/\s+/g, " ").trim().slice(0, n);
+}
+
+function looksLikeEmptyFeatureInfo(text: string) {
+  const t = (text || "").toLowerCase();
+  return (
+    t.includes("no features were found") ||
+    t.includes("no features") ||
+    t.includes("feature count: 0") ||
+    t.includes("featurecount=0") ||
+    t.includes("sin resultados") ||
+    t.includes("no hay resultados")
+  );
+}
+
+async function tryFetch(url: string) {
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json,text/plain,text/html,*/*",
+    },
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text().catch(() => "");
+  return { res, contentType, text };
 }
 
 async function buscarCoordenadas(address: string) {
@@ -51,12 +108,12 @@ async function buscarCoordenadas(address: string) {
 
   if (!res.ok) throw new Error(`Nominatim error: ${res.status}`);
   const data: any[] = await res.json();
-  if (!data?.length) throw new Error("No se encontraron coordenadas para la dirección.");
+  if (!data?.length) throw new Error("No se encontraron coordenadas para la direcciÃ³n.");
 
   const item = data[0];
   const lat = asNum(item?.lat);
   const lon = asNum(item?.lon);
-  if (lat === null || lon === null) throw new Error("Respuesta inválida de Nominatim.");
+  if (lat === null || lon === null) throw new Error("Respuesta invÃ¡lida de Nominatim.");
 
   return { lat, lon, label: item?.display_name ?? address };
 }
@@ -82,34 +139,83 @@ async function reverseGeocode(lat: number, lon: number) {
 }
 
 async function capasUrbanismo(lat: number, lon: number) {
-  // Infraestructura cercana con Overpass (radio ~800m)
-  const radius = 800;
+  const endpoints = [
+    process.env.OVERPASS_URL || "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.nchc.org.tw/api/interpreter",
+  ];
+  const ua = process.env.NOMINATIM_USER_AGENT || "map-ia/1.0 (contact: example@example.com)";
 
-  const query = `
-[out:json][timeout:25];
+  async function runQuery(radius: number, filters: string[]) {
+    const query = `
+[out:json][timeout:45];
 (
-  node(around:${radius},${lat},${lon})["amenity"];
-  node(around:${radius},${lat},${lon})["highway"];
-  node(around:${radius},${lat},${lon})["railway"];
-  node(around:${radius},${lat},${lon})["public_transport"];
-  node(around:${radius},${lat},${lon})["shop"];
-  node(around:${radius},${lat},${lon})["tourism"];
-  node(around:${radius},${lat},${lon})["building"];
+${filters
+  .map((f) => `  node(around:${radius},${lat},${lon})["${f}"];`)
+  .join("\n")}
 );
 out center 60;
 `;
 
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=UTF-8" },
-    body: query,
-  });
+    let lastError: string | null = null;
+    let json: any = null;
 
-  if (!res.ok) throw new Error(`Overpass error: ${res.status}`);
-  const json: any = await res.json();
+    for (const url of endpoints) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=UTF-8",
+            "User-Agent": ua,
+          },
+          body: query,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-  // Resumen simple por categorías (para el informe)
-  const elements: any[] = Array.isArray(json?.elements) ? json.elements : [];
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          lastError = `Overpass error: ${res.status}`;
+          console.error("Overpass error", { url, status: res.status, body: text.slice(0, 300) });
+          continue;
+        }
+
+        json = await res.json().catch(() => null);
+        if (json) return { json, url };
+      } catch (e: any) {
+        lastError = e?.name === "AbortError" ? "Overpass timeout" : e?.message || "Overpass error";
+        console.error("Overpass error", { url, error: lastError });
+      }
+    }
+
+    throw new Error(lastError || "Overpass error");
+  }
+
+  // Intento completo (más pesado)
+  let payload: { json: any; url: string } | null = null;
+  let radius = 800;
+  let partial = false;
+
+  try {
+    payload = await runQuery(radius, [
+      "amenity",
+      "highway",
+      "railway",
+      "public_transport",
+      "shop",
+      "tourism",
+      "building",
+    ]);
+  } catch {
+    // Fallback ligero (menos carga)
+    radius = 500;
+    partial = true;
+    payload = await runQuery(radius, ["amenity", "highway", "public_transport", "railway"]);
+  }
+
+  const elements: any[] = Array.isArray(payload?.json?.elements) ? payload.json.elements : [];
   const counts: Record<string, number> = {};
 
   for (const el of elements) {
@@ -134,9 +240,8 @@ out center 60;
     counts[key] = (counts[key] ?? 0) + 1;
   }
 
-  return { radiusMeters: radius, total: elements.length, counts };
+  return { radiusMeters: radius, total: elements.length, counts, partial, sourceUrl: payload?.url };
 }
-
 async function floodQ100GetFeatureInfo(lat: number, lon: number): Promise<FloodQ100Check> {
   const WMS_URL = "https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100";
   const LAYER = "NZ.RiskZone";
@@ -152,45 +257,105 @@ async function floodQ100GetFeatureInfo(lat: number, lon: number): Promise<FloodQ
   const i = 128;
   const j = 128;
 
-  const url =
-    `${WMS_URL}?service=WMS&request=GetFeatureInfo&version=1.3.0` +
-    `&crs=EPSG:4326` +
-    `&bbox=${encodeURIComponent(`${minLat},${minLon},${maxLat},${maxLon}`)}` +
-    `&width=${width}&height=${height}` +
-    `&layers=${encodeURIComponent(LAYER)}` +
-    `&query_layers=${encodeURIComponent(LAYER)}` +
-    `&info_format=${encodeURIComponent("application/json")}` +
-    `&i=${i}&j=${j}`;
+  const infoFormats = [
+    "application/json",
+    "application/geo+json",
+    "application/geojson",
+    "text/plain",
+    "text/html",
+  ];
 
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`WMS GetFeatureInfo error: ${res.status}`);
+  const attempts: Array<{ name: string; url: string }> = [];
 
-  const json: any = await res.json().catch(() => null);
-  const features = Array.isArray(json?.features) ? json.features : [];
-  return { inside: features.length > 0, featureCount: features.length };
+  for (const fmt of infoFormats) {
+    attempts.push({
+      name: `1.3.0 ${fmt}`,
+      url:
+        `${WMS_URL}?service=WMS&request=GetFeatureInfo&version=1.3.0` +
+        `&crs=EPSG:4326` +
+        `&bbox=${encodeURIComponent(`${minLat},${minLon},${maxLat},${maxLon}`)}` +
+        `&width=${width}&height=${height}` +
+        `&layers=${encodeURIComponent(LAYER)}` +
+        `&query_layers=${encodeURIComponent(LAYER)}` +
+        `&styles=` +
+        `&format=${encodeURIComponent("image/png")}` +
+        `&info_format=${encodeURIComponent(fmt)}` +
+        `&i=${i}&j=${j}`,
+    });
+
+    attempts.push({
+      name: `1.1.1 ${fmt}`,
+      url:
+        `${WMS_URL}?service=WMS&request=GetFeatureInfo&version=1.1.1` +
+        `&srs=EPSG:4326` +
+        `&bbox=${encodeURIComponent(`${minLon},${minLat},${maxLon},${maxLat}`)}` +
+        `&width=${width}&height=${height}` +
+        `&layers=${encodeURIComponent(LAYER)}` +
+        `&query_layers=${encodeURIComponent(LAYER)}` +
+        `&styles=` +
+        `&format=${encodeURIComponent("image/png")}` +
+        `&info_format=${encodeURIComponent(fmt)}` +
+        `&x=${i}&y=${j}`,
+    });
+  }
+
+  for (const a of attempts) {
+    try {
+      const { res, contentType, text } = await tryFetch(a.url);
+      if (!res.ok) continue;
+
+      if (contentType.includes("json")) {
+        try {
+          const json: any = JSON.parse(text);
+          const features = Array.isArray(json?.features) ? json.features : [];
+          return { inside: features.length > 0, featureCount: features.length };
+        } catch {
+          continue;
+        }
+      }
+
+      const empty = looksLikeEmptyFeatureInfo(text);
+      const inside = !empty && text.trim().length > 0;
+      return { inside, featureCount: inside ? 1 : 0 };
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error("No se pudo consultar Q100 (GetFeatureInfo) con formatos compatibles");
 }
 
 async function efasGetFeatureInfo(lat: number, lon: number, layer: string, time?: string | null) {
   const WMS_URL = "https://european-flood.emergency.copernicus.eu/api/wms/";
-  const d = 0.0007;
-  const minLat = lat - d;
-  const minLon = lon - d;
-  const maxLat = lat + d;
-  const maxLon = lon + d;
   const width = 256;
   const height = 256;
   const i = 128;
   const j = 128;
 
+  const toWebMercator = (latIn: number, lonIn: number) => {
+    const x = (lonIn * 20037508.34) / 180;
+    const y =
+      (Math.log(Math.tan(((90 + latIn) * Math.PI) / 360)) / (Math.PI / 180)) *
+      (20037508.34 / 180);
+    return { x, y };
+  };
+
+  const { x, y } = toWebMercator(lat, lon);
+  const d = 120;
+  const minX = x - d;
+  const minY = y - d;
+  const maxX = x + d;
+  const maxY = y + d;
+
   const url =
-    `${WMS_URL}?service=WMS&request=GetFeatureInfo&version=1.3.0` +
-    `&crs=EPSG:4326` +
-    `&bbox=${encodeURIComponent(`${minLat},${minLon},${maxLat},${maxLon}`)}` +
+    `${WMS_URL}?service=WMS&request=GetFeatureInfo&version=1.1.1` +
+    `&srs=EPSG:3857` +
+    `&bbox=${encodeURIComponent(`${minX},${minY},${maxX},${maxY}`)}` +
     `&width=${width}&height=${height}` +
     `&layers=${encodeURIComponent(layer)}` +
     `&query_layers=${encodeURIComponent(layer)}` +
     `&info_format=${encodeURIComponent("application/json")}` +
-    `&i=${i}&j=${j}` +
+    `&x=${i}&y=${j}` +
     (time ? `&time=${encodeURIComponent(time)}` : "");
 
   const res = await fetch(url, { headers: { Accept: "application/json" } });
@@ -247,13 +412,17 @@ export async function POST(req: Request) {
     const address = typeof body?.address === "string" ? body.address.trim() : "";
     const latIn = asNum(body?.lat);
     const lonIn = asNum(body?.lon);
+    const floodOn = body?.floodOn === true;
+    const efasOn = body?.efasOn === true;
+    const efasLayerIn = typeof body?.efasLayer === "string" ? body.efasLayer.trim() : "";
+    const efasTimeIn = typeof body?.efasTime === "string" ? body.efasTime.trim() : null;
 
     let coords: { lat: number; lon: number; label?: string } | null = null;
 
     // 1) Coordenadas
     if (latIn !== null && lonIn !== null) {
       coords = { lat: latIn, lon: lonIn, label: address || undefined };
-      // Si no hay address pero sí coords, intenta reverse geocode para dar contexto al informe.
+      // Si no hay address pero si coords, intenta reverse geocode para dar contexto al informe.
       try {
         const rev = await reverseGeocode(latIn, lonIn);
         if (rev?.label) {
@@ -283,70 +452,93 @@ export async function POST(req: Request) {
     const lat = coords.lat;
     const lon = coords.lon;
 
-  // 2) Infra (OSM Overpass)
-  let urban: any = null;
-  try {
-    urban = await capasUrbanismo(lat, lon);
-    sources.overpass = {
-      name: "OpenStreetMap Overpass API (infraestructura/POIs)",
-      url: "https://overpass-api.de/api/interpreter",
-    };
-  } catch {
-    urban = null;
-    limitations.push("No se pudo obtener infraestructura cercana (Overpass).");
-  }
-
-  // 3) Meteo (OpenWeather)
-  let meteo: WeatherNow | null = null;
-  try {
-    meteo = await meteoActual(lat, lon);
-    sources.openweather = {
-      name: "OpenWeather Current (data/2.5/weather)",
-      url: "https://openweathermap.org/current",
-    };
-  } catch {
-    meteo = null;
-    limitations.push("No se pudo obtener meteorología actual (OpenWeather).");
-  }
-
-  // 4) Q100 (WMS GetFeatureInfo)
-  let floodQ100: FloodQ100Check | null = null;
-  try {
-    floodQ100 = await floodQ100GetFeatureInfo(lat, lon);
-    sources.floodWms = {
-      name: "MITECO/SNCZI WMS ZI_LaminasQ100 (NZ.RiskZone) GetFeatureInfo",
-      url: "https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100",
-    };
-  } catch {
-    floodQ100 = null;
-    limitations.push("No se pudo consultar la capa Q100 (WMS GetFeatureInfo).");
-  }
-
-  // 5) Riesgo dinámico
-  const dynamicFloodRisk =
-    floodQ100 && meteo ? riskFrom(floodQ100.inside, meteo.rain1hMm) : null;
-
-  // 6) EFAS (opcional, si se configura una capa por defecto)
-  const efasLayerEnv = process.env.EFAS_LAYER_DEFAULT;
-  const efasTimeEnv = process.env.EFAS_TIME_DEFAULT || null;
-  let efas: EfasCheck | null = null;
-  if (efasLayerEnv) {
+    // 2) Infra (OSM Overpass)
+    let urban: any = null;
     try {
-      efas = await efasGetFeatureInfo(lat, lon, efasLayerEnv, efasTimeEnv);
+    urban = await capasUrbanismo(lat, lon);
+    if (urban?.sourceUrl) {
+      sources.overpass = {
+        name: "OpenStreetMap Overpass API (infraestructura/POIs)",
+        url: urban.sourceUrl,
+      };
+    }
+    if (urban?.partial) {
+      limitations.push("Infraestructura parcial por limitaciones de Overpass.");
+    }
+    } catch {
+      urban = null;
+      limitations.push("No se pudo obtener infraestructura cercana (Overpass).");
+    }
+
+    // 3) Meteo (OpenWeather)
+    let meteo: WeatherNow | null = null;
+    try {
+      meteo = await meteoActual(lat, lon);
+      sources.openweather = {
+        name: "OpenWeather Current (data/2.5/weather)",
+        url: "https://openweathermap.org/current",
+      };
+    } catch {
+      meteo = null;
+      limitations.push("No se pudo obtener meteorologia actual (OpenWeather).");
+    }
+
+    // 4) Q100 (WMS GetFeatureInfo)
+    let floodQ100: FloodQ100Check | null = null;
+  if (floodOn) {
+    try {
+      floodQ100 = await floodQ100GetFeatureInfo(lat, lon);
+      sources.floodWms = {
+        name: "MITECO/SNCZI WMS ZI_LaminasQ100 (NZ.RiskZone) GetFeatureInfo",
+        url: "https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100",
+      };
+    } catch {
+      floodQ100 = null;
+      limitations.push("No se pudo consultar la capa Q100 (WMS GetFeatureInfo).");
+      sources.floodWms = {
+        name: "MITECO/SNCZI WMS ZI_LaminasQ100 (NZ.RiskZone) GetFeatureInfo",
+        url: "https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100",
+      };
+    }
+  }
+
+    // 5) Riesgo dinamico
+    const dynamicFloodRisk =
+      floodQ100 && meteo ? riskFrom(floodQ100.inside, meteo.rain1hMm) : null;
+
+    // 6) EFAS (usar la capa activa en el mapa si esta disponible)
+    const efasLayerEnv = process.env.EFAS_LAYER_DEFAULT;
+    const efasTimeEnv = process.env.EFAS_TIME_DEFAULT || null;
+    let efas: EfasCheck | null = null;
+    const efasLayerFinal =
+      efasOn && efasLayerIn
+        ? efasLayerIn
+        : efasOn && efasLayerEnv && efasLayerEnv !== "__AUTO__"
+          ? efasLayerEnv
+          : "";
+    const efasTimeFinal = efasOn ? efasTimeIn || efasTimeEnv : null;
+
+  if (efasOn && efasLayerFinal) {
+    try {
+      efas = await efasGetFeatureInfo(lat, lon, efasLayerFinal, efasTimeFinal);
       sources.efas = {
-        name: `Copernicus EFAS (${efasLayerEnv})`,
+        name: `Copernicus EFAS (${efasLayerFinal})`,
         url: "https://european-flood.emergency.copernicus.eu/",
       };
     } catch {
       efas = null;
       limitations.push("No se pudo consultar la capa EFAS (Copernicus).");
+      sources.efas = {
+        name: `Copernicus EFAS (${efasLayerFinal})`,
+        url: "https://european-flood.emergency.copernicus.eu/",
+      };
     }
-  } else {
-    limitations.push("EFAS no configurado (añade EFAS_LAYER_DEFAULT en .env).");
+  } else if (efasOn && !efasLayerFinal) {
+    limitations.push("EFAS activo pero sin capa seleccionada.");
   }
 
-  // 6) Informe IA
-  const openaiKey = process.env.OPENAI_API_KEY;
+    // 6) Informe IA
+    const openaiKey = process.env.OPENAI_API_KEY;
     if (!openaiKey) {
       limitations.push("Falta OPENAI_API_KEY: no se pudo generar el informe IA.");
     }
@@ -357,6 +549,13 @@ export async function POST(req: Request) {
 
       const payloadForModel = {
         coords: { lat, lon, label: coords.label ?? null },
+        mapImageUrl: buildMapImageUrl(lat, lon),
+        layers: {
+          floodOn,
+          efasOn,
+          efasLayer: efasOn ? efasLayerFinal || null : null,
+          efasTime: efasOn ? efasTimeFinal || null : null,
+        },
         urban,
         meteo,
         floodQ100,
@@ -369,21 +568,25 @@ export async function POST(req: Request) {
       const prompt = `
 Eres un analista geoespacial. Redacta un informe conciso y profesional SOLO con los datos del JSON.
 
-Instrucciones estrictas:
-- NO inventes ni alucines. Si falta un dato, dilo como LIMITACIÓN.
-- Q100 es riesgo estadístico (T=100 años). No afirmes inundación activa.
-- Incluye SIEMPRE estas secciones, en este orden:
-  1) Descripción de la zona (usa label si existe; si no, coords)
-  2) Infraestructura cercana (resumen de urban: total y categorías clave)
-  3) Riesgos relevantes:
-     - Q100 (floodQ100: inside/featureCount o LIMITACIÓN)
-     - EFAS (efas: inside/featureCount o LIMITACIÓN)
-     - Riesgo dinámico (dynamicFloodRisk o LIMITACIÓN)
-     - Meteo actual (meteo: temp, lluvia 1h, viento) o LIMITACIÓN
-  4) Posibles usos urbanos (prudentes)
-  5) Recomendación final (sintética)
-  6) Fuentes y limitaciones (lista)
-- Si hay fuentes, cita nombre y URL cuando esté disponible.
+Formato estricto:
+- No uses Markdown (sin #, sin **, sin listas con guiones).
+- Usa texto plano con numeracion "1.", "2.", etc.
+- Si falta un dato, escribe "LIMITACION: <motivo>".
+- Q100 es riesgo estadistico (T=100 anos). No afirmes inundacion activa.
+- Si una capa no esta activada (layers.* = false), indica "No activada por el usuario" y no como LIMITACION.
+
+Secciones obligatorias, en este orden:
+1. Descripcion de la zona (usa label si existe; si no, coords)
+2. Infraestructura cercana (resumen de urban: total y categorias clave)
+3. Riesgos relevantes:
+   Q100: si inside=false, escribe "No se detecta interseccion con zona Q100"; si inside=true, indica que el punto cae en zona Q100.
+   EFAS: si inside=false, escribe "No se detecta interseccion con la capa EFAS seleccionada"; si inside=true, indica que el punto cae en la capa.
+   Riesgo dinamico (dynamicFloodRisk o LIMITACION)
+   Meteo actual: escribe cada dato en su propia linea (Temperatura, Lluvia 1h, Viento, Descripcion).
+   Si lluvia 1h no esta disponible, escribe "No se preven lluvias".
+4. Posibles usos urbanos (prudentes)
+5. Recomendacion final (sintetica)
+6. Fuentes y limitaciones (lista breve)
 
 Datos (JSON):
 ${JSON.stringify(payloadForModel, null, 2)}
@@ -394,7 +597,7 @@ ${JSON.stringify(payloadForModel, null, 2)}
         input: prompt,
       });
 
-      report = resp.output_text || "";
+      report = cleanReportText(resp.output_text || "");
     }
 
     const endedAt = Date.now();
@@ -403,6 +606,7 @@ ${JSON.stringify(payloadForModel, null, 2)}
       {
         ok: true,
         coords: { lat, lon, label: coords.label ?? null },
+        mapImageUrl: buildMapImageUrl(lat, lon),
         urban,
         meteo,
         floodQ100,
@@ -425,3 +629,4 @@ ${JSON.stringify(payloadForModel, null, 2)}
     );
   }
 }
+

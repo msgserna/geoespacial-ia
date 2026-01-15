@@ -94,10 +94,8 @@ export function WeatherMiniCard({ coords }: { coords: LatLon | null }) {
 
   if (!coords) return null;
 
-  const badgeVariant = risk.level === "Bajo" ? "secondary" : "default";
-
   return (
-    <Card className="w-full max-w-[720px] rounded-2xl border bg-background/90 p-3 shadow-lg backdrop-blur">
+    <Card className="glass-panel w-full max-w-[720px] rounded-2xl p-3 shadow-lg">
       {errMsg ? (
         <div className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
           <AlertTriangle className="h-4 w-4" />
@@ -110,7 +108,7 @@ export function WeatherMiniCard({ coords }: { coords: LatLon | null }) {
         <div className="flex flex-wrap items-center gap-4 text-sm">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Badge className="gap-1">
-            <span className="text-foreground text-white">Riesgo</span>
+              <span className="text-primary-foreground">Riesgo</span>
               <Waves className="h-3.5 w-3.5" />
               {risk.level}
             </Badge>

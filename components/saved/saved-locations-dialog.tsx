@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { SavedLocation } from "@/lib/storage/savedLocations";
 import { toast } from "sonner";
@@ -16,6 +16,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { FolderOpen, Trash2 } from "lucide-react";
 
 function formatDate(iso: string) {
   try {
@@ -49,7 +51,7 @@ export function SavedLocationsDialog({
 
         {items.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            No tienes ubicaciones guardadas todavía. Genera un análisis y pulsa “Guardar ubicación”.
+            No tienes ubicaciones guardadas todavia. Genera un analisis y pulsa "Guardar ubicacion".
           </div>
         ) : (
           <ScrollArea className="h-[60vh] rounded-md border">
@@ -80,29 +82,47 @@ export function SavedLocationsDialog({
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 flex-col gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          onLoad(it);
-                          toast.success("Ubicación cargada");
-                          onOpenChange(false);
-                        }}
-                      >
-                        Cargar
-                      </Button>
+                    <TooltipProvider>
+                      <div className="flex shrink-0 flex-col gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              aria-label="Cargar"
+                              onClick={() => {
+                                onLoad(it);
+                                toast.success("Ubicacion cargada");
+                                onOpenChange(false);
+                              }}
+                            >
+                              <FolderOpen className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            Cargar
+                          </TooltipContent>
+                        </Tooltip>
 
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          onDelete(it.id);
-                          toast.message("Ubicación eliminada");
-                        }}
-                      >
-                        Borrar
-                      </Button>
-                    </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="destructive"
+                              aria-label="Borrar"
+                              onClick={() => {
+                                onDelete(it.id);
+                                toast.message("Ubicacion eliminada");
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            Borrar
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TooltipProvider>
                   </div>
 
                   <Separator className="my-3" />
@@ -112,12 +132,9 @@ export function SavedLocationsDialog({
                     <Textarea
                       value={it.note}
                       onChange={(e) => onUpdateNote(it.id, e.target.value)}
-                      placeholder="Añade una nota personal (observaciones, ideas, dudas...)"
+                      placeholder="Anade una nota personal (observaciones, ideas, dudas...)"
                       className="min-h-[88px]"
                     />
-                    <div className="text-xs text-muted-foreground">
-                      La nota se guarda automáticamente en tu navegador (localStorage).
-                    </div>
                   </div>
                 </div>
               ))}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { AnalysisResponse, SourceRef } from "@/types/analysis";
 
@@ -13,13 +13,10 @@ export function PrintReport({ result }: { result: AnalysisResponse }) {
   const limitations = asArray<string>((result as any)?.limitations);
 
   return (
-    <section
-      id="print-area"
-      className="hidden print:block print:overflow-visible"
-    >
+    <section id="print-area" className="hidden print:block print:overflow-visible">
       <div className="space-y-4 print:overflow-visible">
         <header className="border-b pb-3">
-          <div className="text-2xl font-semibold">MAP-IA — Informe</div>
+          <div className="text-2xl font-semibold">MAP-IA - Informe</div>
           <div className="mt-1 text-sm">
             <div>
               <b>Fecha:</b> {now}
@@ -36,11 +33,20 @@ export function PrintReport({ result }: { result: AnalysisResponse }) {
         </header>
 
         <main className="space-y-4">
+          {result.mapImageUrl ? (
+            <section>
+              <div className="text-lg font-semibold">Mapa del punto</div>
+              <img
+                src={result.mapImageUrl}
+                alt="Mapa del punto"
+                className="mt-2 w-full rounded-md border"
+              />
+            </section>
+          ) : null}
+
           <section>
             <div className="text-lg font-semibold">Informe IA</div>
-            <div className="mt-2 whitespace-pre-wrap text-sm break-words">
-              {result.report}
-            </div>
+            <div className="mt-2 whitespace-pre-wrap text-sm break-words">{result.report}</div>
           </section>
 
           <section>
@@ -50,7 +56,7 @@ export function PrintReport({ result }: { result: AnalysisResponse }) {
                 sources.map((s, i) => (
                   <li key={i}>
                     <b>{s.name}:</b> {s.url}
-                    {s.note ? ` — ${s.note}` : ""}
+                    {s.note ? ` - ${s.note}` : ""}
                   </li>
                 ))
               ) : (

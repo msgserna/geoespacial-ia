@@ -70,6 +70,7 @@ export type EfasData = {
 export type AnalysisResponse = {
   // Coordenadas
   coords: { lat: number; lon: number; label?: string | null };
+  mapImageUrl?: string;
 
   // Bloque estructurado que consumen los paneles (permite rellenar compatibilidad en cliente)
   data?: {
