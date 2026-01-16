@@ -258,6 +258,7 @@ export default function MapLayersPanel({
             <div className="text-xs font-medium text-muted-foreground">Opacidad meteo</div>
             <div className="text-xs">{opacityPct}%</div>
           </div>
+          <div className="overflow-hidden pr-1">
           <Slider
             value={[opacityPct]}
             min={0}
@@ -265,6 +266,7 @@ export default function MapLayersPanel({
             step={5}
             onValueChange={(v) => onOpacityChange((v[0] ?? 0) / 100)}
           />
+          </div>
         </div>
 
         <Separator />
@@ -335,6 +337,7 @@ export default function MapLayersPanel({
               <div className="text-xs font-medium text-muted-foreground">Opacidad EFAS</div>
               <div className="text-xs">{efasOpacityPct}%</div>
             </div>
+          <div className="overflow-hidden pr-1">
             <Slider
               value={[efasOpacityPct]}
               min={0}
@@ -343,12 +346,14 @@ export default function MapLayersPanel({
               onValueChange={(v) => onEfasOpacityChange((v[0] ?? 0) / 100)}
             />
           </div>
+          </div>
         </div>
 
       </CardContent>
     </Card>
   );
 }
+
 
 
 
