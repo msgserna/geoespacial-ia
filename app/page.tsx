@@ -590,7 +590,7 @@ function PageContent() {
             terrain3d={terrain3d}
             tourMarker={tourActive && !coords && currentTour === "main" && currentStep > 0}
             bottomLeftOverlay={
-              <div id="onborda-mini-card">
+              <div id="onborda-mini-card" className="ui-mini-card">
                 <WeatherMiniCard coords={coords} tourActive={tourActive} />
               </div>
             }
@@ -666,7 +666,7 @@ function PageContent() {
 
         <div className="pointer-events-none absolute inset-0 z-[1400] p-4 md:p-6 print:hidden">
           <div
-            className={`glass-panel pointer-events-auto flex max-w-[440px] flex-col gap-4 rounded-2xl p-4 text-sm ${
+            className={`glass-panel ui-panel-left pointer-events-auto flex max-w-[440px] flex-col gap-4 rounded-2xl p-4 text-sm ${
               showResultsPanel ? "h-full overflow-y-auto" : "h-auto"
             }`}
           >
@@ -876,6 +876,7 @@ function PageContent() {
     </Onborda>
   );
 }
+
 
 
 

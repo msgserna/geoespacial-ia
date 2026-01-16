@@ -266,36 +266,19 @@ body[data-onborda-welcome="1"] [data-name="onborda-card"] {
 }
 
 @media (max-height: 820px) {
+  .ui-panel-left {
+    transform: scale(0.9);
+    transform-origin: top left;
+  }
   .layers-panel {
-    width: clamp(300px, 34vw, 340px);
+    transform: scale(0.9);
+    transform-origin: top right;
   }
-  .layers-panel__header {
-    padding-top: clamp(0.35rem, 1vh, 0.5rem);
-    padding-bottom: clamp(0.35rem, 1vh, 0.5rem);
-  }
-  .layers-panel__content {
-    padding-top: clamp(0.5rem, 1.4vh, 0.75rem);
-    padding-bottom: clamp(0.5rem, 1.4vh, 0.75rem);
-    gap: clamp(0.5rem, 1.4vh, 0.75rem);
-  }
-  .layers-panel .text-sm {
-    font-size: clamp(0.78rem, 1.6vh, 0.9rem);
-  }
-  .layers-panel .text-xs {
-    font-size: clamp(0.65rem, 1.3vh, 0.75rem);
-  }
-  .layers-panel .h-4 {
-    height: clamp(0.8rem, 1.6vh, 0.9rem);
-    width: clamp(0.8rem, 1.6vh, 0.9rem);
-  }
-  .layers-panel button {
-    padding-top: clamp(0.3rem, 1vh, 0.4rem);
-    padding-bottom: clamp(0.3rem, 1vh, 0.4rem);
-  }
-  .layers-panel select {
-    padding-top: clamp(0.25rem, 0.8vh, 0.3rem);
-    padding-bottom: clamp(0.25rem, 0.8vh, 0.3rem);
+  .ui-mini-card {
+    transform: scale(0.9);
+    transform-origin: bottom center;
   }
 }
+
 
 
