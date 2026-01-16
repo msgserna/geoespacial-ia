@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -145,7 +145,13 @@ export default function MapLayersPanel({
   }
 
   return (
-    <Card id="onborda-layers-panel" className="glass-panel w-[360px] shadow-lg">
+    <Card
+      id="onborda-layers-panel"
+      className="glass-panel w-[360px] shadow-lg origin-top-right"
+      style={{
+        transform: "scale(clamp(0.78, calc((100dvh - 140px) / 720), 1))",
+      }}
+    >
       <CardHeader className="flex flex-row items-center justify-between py-3">
         <div className="text-sm font-semibold flex items-center gap-2">
           <Layers className="h-4 w-4" />
@@ -349,3 +355,4 @@ export default function MapLayersPanel({
     </Card>
   );
 }
+
