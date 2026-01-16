@@ -12,7 +12,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, FileDown, Save, Bookmark, Eraser, Sparkles, Moon, Sun } from "lucide-react";
+import { MapPin, FileDown, Save, Bookmark, Eraser, Sparkles, Moon, Sun, Compass } from "lucide-react";
 
 import { toast } from "sonner";
 
@@ -385,7 +385,10 @@ export default function Page() {
           }`}
         >
           <div className="flex items-start justify-between gap-2">
-            <div className="text-base font-semibold">Asistente Geoespacial</div>
+            <div className="flex items-center gap-2 text-base font-semibold">
+              <Compass className="h-4 w-4 text-primary dark:text-white" />
+              <span>Asistente Geoespacial</span>
+            </div>
             <div className="flex items-center gap-2">
               {mounted ? (
                 <>

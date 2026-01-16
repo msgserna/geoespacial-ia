@@ -133,7 +133,7 @@ export default function MapLayersPanel({
   if (!open) {
     return (
       <Button
-        variant="secondary"
+        variant="default"
         size="icon"
         className="shadow"
         onClick={() => onOpenChange(true)}
@@ -197,6 +197,14 @@ export default function MapLayersPanel({
               Dark
             </Button>
           </div>
+          <Button
+            variant={terrain3d ? "default" : "outline"}
+            onClick={onTerrain3dToggle}
+            className="w-full justify-start gap-2"
+          >
+            <Cuboid className="h-4 w-4" />
+            3D Terrain
+          </Button>
         </div>
 
         <Separator />
@@ -336,20 +344,6 @@ export default function MapLayersPanel({
           </div>
         </div>
 
-        <Separator />
-
-        {/* 3D */}
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">TERRENO 3D</div>
-          <Button
-            variant={terrain3d ? "default" : "outline"}
-            onClick={onTerrain3dToggle}
-            className="w-full justify-start gap-2"
-          >
-            <Cuboid className="h-4 w-4" />
-            3D Terrain
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );

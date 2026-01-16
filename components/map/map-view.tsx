@@ -52,6 +52,7 @@ const EFAS_SOURCE_ID = "efas-wms";
 const EFAS_LAYER_ID = "efas-layer";
 const TERRAIN_SOURCE_ID = "mapbox-dem";
 const BUILDINGS_LAYER_ID = "3d-buildings";
+const OVERLAY_ORDER = [FLOOD_LAYER_ID, WEATHER_LAYER_ID, EFAS_LAYER_ID];
 
 export function MapView({
   value,
@@ -135,14 +136,26 @@ export function MapView({
     });
   }
 
-  function applyOverlays(map: mapboxgl.Map) {
+  function syncOverlayOrder(map: mapboxgl.Map) {
+    for (let i = 0; i < OVERLAY_ORDER.length - 1; i += 1) {
+      const layerId = OVERLAY_ORDER[i];
+      const beforeId = OVERLAY_ORDER[i + 1];
+      if (!map.getLayer(layerId) || !map.getLayer(beforeId)) continue;
+      map.moveLayer(layerId, beforeId);
+    }
+  }
+
+  function syncWeather(map: mapboxgl.Map) {
     if (weatherLayer) {
       const weatherUrl = `/api/weather/tiles/${weatherLayer}/{z}/{x}/{y}.png`;
       addRasterLayer(map, WEATHER_SOURCE_ID, WEATHER_LAYER_ID, weatherUrl, clamp01(weatherOpacity));
     } else {
       removeLayerAndSource(map, WEATHER_LAYER_ID, WEATHER_SOURCE_ID);
     }
+    syncOverlayOrder(map);
+  }
 
+  function syncFlood(map: mapboxgl.Map) {
     if (floodOn) {
       const floodUrl =
         "https://wms.mapama.gob.es/sig/agua/ZI_LaminasQ100" +
@@ -155,7 +168,10 @@ export function MapView({
     } else {
       removeLayerAndSource(map, FLOOD_LAYER_ID, FLOOD_SOURCE_ID);
     }
+    syncOverlayOrder(map);
+  }
 
+  function syncEfas(map: mapboxgl.Map) {
     if (efasOn && efasLayer) {
       const timeParam = efasTime ? `&time=${encodeURIComponent(efasTime)}` : "";
       const cacheBust = encodeURIComponent(`${efasLayer}-${efasTime ?? "notime"}`);
@@ -173,6 +189,7 @@ export function MapView({
     } else {
       removeLayerAndSource(map, EFAS_LAYER_ID, EFAS_SOURCE_ID);
     }
+    syncOverlayOrder(map);
   }
 
   function applyTerrain(map: mapboxgl.Map) {
@@ -311,7 +328,9 @@ export function MapView({
     });
 
     map.on("load", () => {
-      applyOverlays(map);
+      syncWeather(map);
+      syncFlood(map);
+      syncEfas(map);
       applyTerrain(map);
       syncBuildings(map, terrain3d);
       syncMarker(map, value ?? null);
@@ -332,7 +351,9 @@ export function MapView({
     const nextStyle = MAPBOX_STYLES[baseLayer];
     map.setStyle(nextStyle);
     map.once("style.load", () => {
-      applyOverlays(map);
+      syncWeather(map);
+      syncFlood(map);
+      syncEfas(map);
       applyTerrain(map);
       syncBuildings(map, terrain3d);
     });
@@ -342,8 +363,22 @@ export function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    runWhenStyleReady(map, () => applyOverlays(map));
-  }, [weatherLayer, weatherOpacity, floodOn, efasOn, efasLayer, efasOpacity, efasTime]);
+    runWhenStyleReady(map, () => syncWeather(map));
+  }, [weatherLayer, weatherOpacity]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    runWhenStyleReady(map, () => syncFlood(map));
+  }, [floodOn]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    runWhenStyleReady(map, () => syncEfas(map));
+  }, [efasOn, efasLayer, efasOpacity, efasTime]);
 
   useEffect(() => {
     const map = mapRef.current;
