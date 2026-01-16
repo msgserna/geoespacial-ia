@@ -146,7 +146,7 @@ export default function MapLayersPanel({
 
   return (
     <Card id="onborda-layers-panel" className="glass-panel w-[360px] shadow-lg layers-panel">
-      <CardHeader className="layers-panel__header flex flex-row items-center justify-between py-3">
+      <CardHeader className="layers-panel__header flex flex-row items-center justify-between py-2">
         <div className="text-sm font-semibold flex items-center gap-2">
           <Layers className="h-4 w-4" />
           Capas del mapa
@@ -156,10 +156,10 @@ export default function MapLayersPanel({
         </Button>
       </CardHeader>
 
-      <CardContent className="layers-panel__content space-y-4 pb-1">
+      <CardContent className="layers-panel__content space-y-4 pb-1 pt-1">
         {/* BASE MAP */}
         <div id="onborda-base-map" className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">MAPA BASE</div>
+
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant={baseMap === "streets" ? "default" : "outline"}
@@ -258,7 +258,6 @@ export default function MapLayersPanel({
             <div className="text-xs font-medium text-muted-foreground">Opacidad meteo</div>
             <div className="text-xs">{opacityPct}%</div>
           </div>
-          <div className="overflow-hidden pr-1">
           <Slider
             value={[opacityPct]}
             min={0}
@@ -266,7 +265,6 @@ export default function MapLayersPanel({
             step={5}
             onValueChange={(v) => onOpacityChange((v[0] ?? 0) / 100)}
           />
-          </div>
         </div>
 
         <Separator />
@@ -283,7 +281,6 @@ export default function MapLayersPanel({
             <Waves className="h-4 w-4" />
             Inundaciones (Q100)
           </Button>
-          <div className="text-xs text-muted-foreground">Capa WMS oficial (T=100 anos).</div>
         </div>
 
         <Separator />
@@ -337,7 +334,6 @@ export default function MapLayersPanel({
               <div className="text-xs font-medium text-muted-foreground">Opacidad EFAS</div>
               <div className="text-xs">{efasOpacityPct}%</div>
             </div>
-          <div className="overflow-hidden pr-1">
             <Slider
               value={[efasOpacityPct]}
               min={0}
@@ -346,13 +342,21 @@ export default function MapLayersPanel({
               onValueChange={(v) => onEfasOpacityChange((v[0] ?? 0) / 100)}
             />
           </div>
-          </div>
         </div>
 
       </CardContent>
     </Card>
   );
 }
+
+
+
+
+
+
+
+
+
 
 
 
