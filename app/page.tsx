@@ -32,6 +32,8 @@ import {
   Thermometer,
   CloudRain,
   Waves,
+  FileText,
+
 } from "lucide-react";
 
 import { Onborda, OnbordaProvider, useOnborda } from "onborda";
@@ -642,6 +644,24 @@ function PageContent() {
               </div>
             }
           />
+          <div className="absolute bottom-3 right-3 z-[1200] pointer-events-auto">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-7 gap-1 px-2 text-[11px]"
+              asChild
+            >
+              <a
+                href="/tecnologias/informe-tecnologias.pdf"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Info-Tecn"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Info-Tecn
+              </a>
+            </Button>
+          </div>
         </div>
 
         <div className="pointer-events-none absolute inset-0 z-[1400] p-4 md:p-6 print:hidden">
@@ -856,3 +876,8 @@ function PageContent() {
     </Onborda>
   );
 }
+
+
+
+
+
