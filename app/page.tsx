@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AnalysisResponse, LatLon } from "@/types/analysis";
 
@@ -12,7 +12,8 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, FileDown, Save, Bookmark, Eraser, Sparkles, Moon, Sun, Compass } from "lucide-react";
+import { MapPin, FileDown, Save, Bookmark, Eraser, HelpCircle, Moon, Sun, Compass } from "lucide-react";
+import { Onborda, OnbordaProvider, useOnborda } from "onborda";
 
 import { toast } from "sonner";
 
@@ -31,6 +32,7 @@ import { PrintReport } from "@/components/report/print-report";
 // MapLayersPanel es default export
 import MapLayersPanel from "@/components/map/map-layers-panel";
 import { WeatherMiniCard } from "@/components/map/weather-mini-card";
+import { OnbordaCard } from "@/components/onborda/onborda-card";
 
 // MapView solo en cliente (evita window is not defined)
 const MapView = dynamic(() => import("@/components/map/map-view").then((m) => m.MapView), {
@@ -40,8 +42,19 @@ const MapView = dynamic(() => import("@/components/map/map-view").then((m) => m.
   ),
 });
 
+const ONBORDA_SEEN_KEY = "onborda:seen";
+
 export default function Page() {
+  return (
+    <OnbordaProvider>
+      <PageContent />
+    </OnbordaProvider>
+  );
+}
+
+function PageContent() {
   const { theme, setTheme } = useTheme();
+  const { startOnborda, isOnbordaVisible, currentStep, currentTour } = useOnborda();
   const [mounted, setMounted] = useState(false);
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<LatLon | null>(null);
@@ -55,8 +68,15 @@ export default function Page() {
   const [savedOpen, setSavedOpen] = useState(false);
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
 
+  const [tourActive, setTourActive] = useState(false);
+  const preTourLayersOpenRef = useRef<boolean | null>(null);
+  const preTourSavedOpenRef = useRef<boolean | null>(null);
+  const autoTourStartedRef = useRef(false);
+  const tourShownRef = useRef(false);
+
   // Layers
-  const [layersOpen, setLayersOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(true);
+  const layersOpenRef = useRef(layersOpen);
   const [baseMap, setBaseMap] = useState<"streets" | "satellite" | "outdoors" | "dark">(
     "streets"
   );
@@ -78,10 +98,61 @@ export default function Page() {
   const [terrain3d, setTerrain3d] = useState(false);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const hasResults = loading || !!result || !!error;
+  const showResultsPanel = hasResults || tourActive;
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const startTour = useCallback(() => {
+    preTourLayersOpenRef.current = layersOpenRef.current;
+    preTourSavedOpenRef.current = savedOpen;
+    autoTourStartedRef.current = true;
+    tourShownRef.current = false;
+    setLayersOpen(true);
+    setSavedOpen(false);
+    setTourActive(true);
+    setTimeout(() => startOnborda("main"), 220);
+  }, [savedOpen, startOnborda]);
+
+  useEffect(() => {
+    layersOpenRef.current = layersOpen;
+  }, [layersOpen]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (autoTourStartedRef.current) return;
+    const seen = localStorage.getItem(ONBORDA_SEEN_KEY);
+    if (!seen) {
+      autoTourStartedRef.current = true;
+      startTour();
+    }
+  }, [mounted, startTour]);
+
+  useEffect(() => {
+    if (tourActive) {
+      setLayersOpen(true);
+    }
+  }, [tourActive]);
+
+  useEffect(() => {
+    if (isOnbordaVisible) {
+      tourShownRef.current = true;
+      return;
+    }
+    if (!tourActive || !tourShownRef.current) return;
+    localStorage.setItem(ONBORDA_SEEN_KEY, "1");
+    setTourActive(false);
+    tourShownRef.current = false;
+    if (preTourLayersOpenRef.current !== null) {
+      setLayersOpen(preTourLayersOpenRef.current);
+      preTourLayersOpenRef.current = null;
+    }
+    if (preTourSavedOpenRef.current !== null) {
+      setSavedOpen(preTourSavedOpenRef.current);
+      preTourSavedOpenRef.current = null;
+    }
+  }, [tourActive, isOnbordaVisible]);
 
   // Normaliza la respuesta del API a la forma que consumen los paneles (data.*),
   // sin perder la estructura original que ya se imprime/guarda.
@@ -315,248 +386,430 @@ export default function Page() {
             ? "clouds_new"
             : "wind_new";
 
+  const onbordaSteps = useMemo(
+    () => [
+      {
+        tour: "main",
+        steps: [
+          {
+            title: "Bienvenido",
+            content:
+              "Este es tu Asistente Geoespacial. Aqui evaluas riesgos y contexto del punto elegido.",
+            selector: "#onborda-welcome-anchor",
+            side: "bottom",
+            pointerPadding: 6,
+            pointerRadius: 10,
+          },
+          {
+            title: "Buscar o seleccionar",
+            content:
+              "Busca una direccion o selecciona un punto directamente en el mapa.",
+            selector: "#onborda-search",
+            side: "bottom",
+            pointerPadding: 12,
+            pointerRadius: 16,
+          },
+          {
+            title: "Menu de capas",
+            content: "Desde aqui controlas las capas y el mapa base.",
+            selector: "#onborda-layers-panel",
+            side: "left",
+            pointerPadding: 12,
+            pointerRadius: 16,
+          },
+          {
+            title: "Mapa base",
+            content: "Cambia el estilo base del mapa segun el contexto.",
+            selector: "#onborda-base-map",
+            side: "left",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Meteo",
+            content: "Activa capas de temperatura, precipitacion, nubes o viento.",
+            selector: "#onborda-weather",
+            side: "left",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Inundaciones Q100",
+            content: "Capa oficial de riesgo de inundacion (periodo de retorno 100).",
+            selector: "#onborda-flood-button",
+            side: "left",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Copernicus EFAS",
+            content: "Capa europea de alerta temprana; ajusta la capa y opacidad.",
+            selector: "#onborda-efas",
+            side: "left",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Mini-card",
+            content: "Resumen rapido del punto: riesgo, temp, viento y lluvia.",
+            selector: "#onborda-mini-card",
+            side: "top",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Analizar punto",
+            content: "Lanza el analisis cuando tengas un punto seleccionado.",
+            selector: "#onborda-analyze",
+            side: "right",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Resultados",
+            content: "Aqui aparecera el informe con datos, fuentes y limitaciones.",
+            selector: "#onborda-results",
+            side: "right",
+            pointerPadding: 12,
+            pointerRadius: 16,
+          },
+          {
+            title: "Guardar ubicacion",
+            content: "Guarda el punto actual para revisarlo mas tarde.",
+            selector: "#onborda-save",
+            side: "right",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Ubicaciones guardadas",
+            content: "Accede al historial de ubicaciones guardadas.",
+            selector: "#onborda-saved",
+            side: "right",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Limpiar",
+            content: "Reinicia la busqueda y el estado actual.",
+            selector: "#onborda-clear",
+            side: "right",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+          {
+            title: "Descargar informe",
+            content: "Cuando haya informe, puedes exportarlo en PDF.",
+            selector: "#onborda-download",
+            side: "right",
+            pointerPadding: 10,
+            pointerRadius: 14,
+          },
+        ],
+      },
+    ],
+    []
+  );
+
+  useEffect(() => {
+    if (!tourActive || currentTour !== "main") return;
+    setSavedOpen(false);
+  }, [tourActive, currentTour, currentStep]);
+
   return (
-    <main className="relative h-dvh overflow-hidden">
-      <div className="absolute inset-0 print:hidden">
-        <MapView
-          value={coords}
-          onPick={(c: LatLon) => setCoords(c)}
-          baseLayer={baseMap}
-          weatherLayer={weatherLayer as any}
-          weatherOpacity={weatherOpacity}
-          floodOn={floodOn}
-          efasOn={efasOn}
-          efasLayer={efasLayer}
-          efasOpacity={efasOpacity}
-          efasTime={efasTime}
-          terrain3d={terrain3d}
-          bottomLeftOverlay={<WeatherMiniCard coords={coords} />}
-          overlay={
-            <MapLayersPanel
-              open={layersOpen}
-              onOpenChange={setLayersOpen}
-              baseMap={baseMap}
-              onBaseMapChange={(v) => {
-                if (!hasMapboxToken) {
-                  toast.error("Configura NEXT_PUBLIC_MAPBOX_TOKEN para usar Mapbox");
-                  return;
-                }
-                setBaseMap(v);
-              }}
-              weather={weather}
-              onWeatherChange={setWeather}
-              opacity={weatherOpacity}
-              onOpacityChange={setWeatherOpacity}
-              floodOn={floodOn}
-              onFloodToggle={() => {
-                setFloodOn((prev) => {
-                  const next = !prev;
-                  toast.message(next ? "Inundaciones (Q100) activadas" : "Inundaciones (Q100) desactivadas");
-                  return next;
-                });
-              }}
-              efasOn={efasOn}
-              onEfasToggle={() => {
-                setEfasOn((prev) => {
-                  const next = !prev;
-                  toast.message(next ? "Copernicus EFAS activado" : "Copernicus EFAS desactivado");
-                  return next;
-                });
-              }}
-              onEfasEnable={() => {
-                setEfasOn(true);
-                toast.message("Copernicus EFAS activado");
-              }}
-              efasLayer={efasLayer}
-              onEfasLayerChange={setEfasLayer}
-              efasOpacity={efasOpacity}
-              onEfasOpacityChange={setEfasOpacity}
-              terrain3d={terrain3d}
-              onTerrain3dToggle={() => setTerrain3d((prev) => !prev)}
-            />
-          }
-        />
-      </div>
-
-      <div className="pointer-events-none absolute inset-0 z-[1400] p-4 md:p-6 print:hidden">
+    <Onborda
+      steps={onbordaSteps}
+      cardComponent={OnbordaCard}
+      shadowRgb="15, 23, 42"
+      shadowOpacity="0.55"
+      interact={false}
+    >
+      <main className="relative h-dvh overflow-hidden">
         <div
-          className={`glass-panel pointer-events-auto flex max-w-[440px] flex-col gap-4 rounded-2xl p-4 text-sm ${
-            hasResults ? "h-full overflow-y-auto" : "h-auto"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 text-base font-semibold">
-              <Compass className="h-4 w-4 text-primary dark:text-white" />
-              <span>Asistente Geoespacial</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {mounted ? (
-                <>
-                  <Switch
-                    checked={theme === "dark"}
-                    onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-                    aria-label="Cambiar tema"
-                  />
-                  {theme === "dark" ? (
-                    <Sun className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Moon className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </>
-              ) : (
-                <div className="h-5 w-14" />
-              )}
-            </div>
-          </div>
-
-          <div className="text-sm">
-            <AddressSearch
-              address={address}
-              onAddressChange={setAddress}
-              onAnalyzeByAddress={goToAddress}
-              onSuggestionPick={handleSuggestionPick}
-              disabled={loading || geocodeLoading}
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                coords ? "bg-emerald-500" : "bg-muted-foreground/60"
-              }`}
-              aria-label={coords ? "Punto seleccionado" : "Sin punto"}
-            />
-            <div className="text-[11px] font-medium text-foreground">{coordLabel}</div>
-          </div>
-
-          <TooltipProvider>
-            <div className="grid grid-cols-3 gap-2">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="lg" variant="outline" disabled aria-label="Proximamente">
-                    <Sparkles className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Proximamente
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    disabled={loading}
-                    aria-label="Limpiar"
-                    onClick={() => {
-                      setAddress("");
-                      setCoords(null);
-                      setResult(null);
-                      setError(null);
-                      toast.message("Limpio");
-                    }}
-                  >
-                    <Eraser className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Limpiar
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="lg"
-                    variant={coords ? "default" : "secondary"}
-                    disabled={!coords || loading}
-                    aria-label="Analizar punto"
-                    onClick={() =>
-                      coords &&
-                      analyze({
-                        lat: coords.lat,
-                        lon: coords.lon,
-                        floodOn,
-                        efasOn,
-                        efasLayer,
-                        efasTime,
-                      })
-                    }
-                  >
-                    <MapPin className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Analizar punto
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    disabled={!result}
-                    aria-label="Pdf"
-                    onClick={() =>
-                      result ? window.print() : toast.error("No hay informe para exportar")
-                    }
-                  >
-                    <FileDown className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Pdf
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="lg" variant="outline" aria-label="Guardadas" onClick={() => setSavedOpen(true)}>
-                    <Bookmark className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Guardadas
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="lg" disabled={!result || loading} aria-label="Guardar ubicacion" onClick={handleSaveCurrent}>
-                    <Save className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" sideOffset={6}>
-                  Guardar ubicacion
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </TooltipProvider>
-
-          <div className="text-[11px] text-muted-foreground">
-            La IA se basa en datos reales. Si una fuente no responde, se indicara como limitacion.
-          </div>
-
-          {hasResults ? (
-            <div className="min-h-0 flex-1 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <ReportPanel loading={loading} result={result} error={error} />
-            </div>
-          ) : null}
+          id="onborda-welcome-anchor"
+          className="pointer-events-none fixed left-1/2 top-[22%] h-1 w-1 -translate-x-1/2 -translate-y-1/2"
+        />
+        <div className="absolute inset-0 print:hidden">
+          <MapView
+            value={coords}
+            onPick={(c: LatLon) => setCoords(c)}
+            baseLayer={baseMap}
+            weatherLayer={weatherLayer as any}
+            weatherOpacity={weatherOpacity}
+            floodOn={floodOn}
+            efasOn={efasOn}
+            efasLayer={efasLayer}
+            efasOpacity={efasOpacity}
+            efasTime={efasTime}
+            terrain3d={terrain3d}
+            tourMarker={tourActive && !coords && currentTour === "main" && currentStep > 0}
+            bottomLeftOverlay={
+              <div id="onborda-mini-card">
+                <WeatherMiniCard coords={coords} tourActive={tourActive} />
+              </div>
+            }
+            overlay={
+              <MapLayersPanel
+                open={layersOpen}
+                onOpenChange={(v) => {
+                  if (tourActive && !v) return;
+                  setLayersOpen(v);
+                }}
+                baseMap={baseMap}
+                onBaseMapChange={(v) => {
+                  if (!hasMapboxToken) {
+                    toast.error("Configura NEXT_PUBLIC_MAPBOX_TOKEN para usar Mapbox");
+                    return;
+                  }
+                  setBaseMap(v);
+                }}
+                weather={weather}
+                onWeatherChange={setWeather}
+                opacity={weatherOpacity}
+                onOpacityChange={setWeatherOpacity}
+                floodOn={floodOn}
+                onFloodToggle={() => {
+                  setFloodOn((prev) => {
+                    const next = !prev;
+                    toast.message(next ? "Inundaciones (Q100) activadas" : "Inundaciones (Q100) desactivadas");
+                    return next;
+                  });
+                }}
+                efasOn={efasOn}
+                onEfasToggle={() => {
+                  setEfasOn((prev) => {
+                    const next = !prev;
+                    toast.message(next ? "Copernicus EFAS activado" : "Copernicus EFAS desactivado");
+                    return next;
+                  });
+                }}
+                onEfasEnable={() => {
+                  setEfasOn(true);
+                  toast.message("Copernicus EFAS activado");
+                }}
+                efasLayer={efasLayer}
+                onEfasLayerChange={setEfasLayer}
+                efasOpacity={efasOpacity}
+                onEfasOpacityChange={setEfasOpacity}
+                terrain3d={terrain3d}
+                onTerrain3dToggle={() => setTerrain3d((prev) => !prev)}
+              />
+            }
+          />
         </div>
-      </div>
 
-      <SavedLocationsDialog
-        open={savedOpen}
-        onOpenChange={setSavedOpen}
-        items={savedLocations}
-        onLoad={handleLoadSaved}
-        onDelete={handleDeleteSaved}
-        onUpdateNote={handleUpdateNote}
-      />
+        <div className="pointer-events-none absolute inset-0 z-[1400] p-4 md:p-6 print:hidden">
+          <div
+            className={`glass-panel pointer-events-auto flex max-w-[440px] flex-col gap-4 rounded-2xl p-4 text-sm ${
+              showResultsPanel ? "h-full overflow-y-auto" : "h-auto"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div id="onborda-title" className="flex items-center gap-2 text-base font-semibold">
+                <Compass className="h-4 w-4 text-primary dark:text-white" />
+                <span>Asistente Geoespacial</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {mounted ? (
+                  <>
+                    <Switch
+                      checked={theme === "dark"}
+                      onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                      aria-label="Cambiar tema"
+                    />
+                    {theme === "dark" ? (
+                      <Sun className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Moon className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </>
+                ) : (
+                  <div className="h-5 w-14" />
+                )}
+              </div>
+            </div>
 
-      {result ? <PrintReport result={result} /> : null}
-    </main>
+            <div className="text-sm">
+              <AddressSearch
+                address={address}
+                onAddressChange={setAddress}
+                onAnalyzeByAddress={goToAddress}
+                onSuggestionPick={handleSuggestionPick}
+                disabled={loading || geocodeLoading}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  coords ? "bg-emerald-500" : "bg-muted-foreground/60"
+                }`}
+                aria-label={coords ? "Punto seleccionado" : "Sin punto"}
+              />
+              <div className="text-[11px] font-medium text-foreground">{coordLabel}</div>
+            </div>
+
+            <TooltipProvider>
+              <div className="grid grid-cols-3 gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      id="onborda-tour-trigger"
+                      size="lg"
+                      variant="outline"
+                      aria-label="Guia interactiva"
+                      onClick={startTour}
+                    >
+                      <HelpCircle className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Guia interactiva
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      id="onborda-clear"
+                      size="lg"
+                      variant="outline"
+                      disabled={loading}
+                      aria-label="Limpiar"
+                      onClick={() => {
+                        setAddress("");
+                        setCoords(null);
+                        setResult(null);
+                        setError(null);
+                        toast.message("Limpio");
+                      }}
+                    >
+                      <Eraser className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Limpiar
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      id="onborda-analyze"
+                      size="lg"
+                      variant={coords ? "default" : "secondary"}
+                      disabled={!coords || loading}
+                      aria-label="Analizar punto"
+                      onClick={() =>
+                        coords &&
+                        analyze({
+                          lat: coords.lat,
+                          lon: coords.lon,
+                          floodOn,
+                          efasOn,
+                          efasLayer,
+                          efasTime,
+                        })
+                      }
+                    >
+                      <MapPin className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Analizar punto
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      id="onborda-download"
+                      size="lg"
+                      variant="outline"
+                      disabled={!result}
+                      aria-label="Pdf"
+                      onClick={() =>
+                        result ? window.print() : toast.error("No hay informe para exportar")
+                      }
+                    >
+                      <FileDown className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Pdf
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      id="onborda-saved"
+                      size="lg"
+                      variant="outline"
+                      aria-label="Guardadas"
+                      onClick={() => setSavedOpen(true)}
+                    >
+                      <Bookmark className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Guardadas
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      id="onborda-save"
+                      size="lg"
+                      disabled={!result || loading}
+                      aria-label="Guardar ubicacion"
+                      onClick={handleSaveCurrent}
+                    >
+                      <Save className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Guardar ubicacion
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
+
+            <div className="text-[11px] text-muted-foreground">
+              La IA se basa en datos reales. Si una fuente no responde, se indicara como limitacion.
+            </div>
+
+            {showResultsPanel ? (
+              <div
+                id="onborda-results"
+                className="min-h-0 flex-1 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500"
+              >
+                {hasResults ? (
+                  <ReportPanel loading={loading} result={result} error={error} />
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-2xl bg-slate-200/80 px-6 py-10 text-center text-sm text-slate-700 dark:bg-slate-950/80 dark:text-slate-100">
+                    <div className="max-w-[280px] text-base leading-relaxed">
+                      Aqui veras el informe cuando analices un punto.
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <SavedLocationsDialog
+          open={savedOpen}
+          onOpenChange={setSavedOpen}
+          items={savedLocations}
+          onLoad={handleLoadSaved}
+          onDelete={handleDeleteSaved}
+          onUpdateNote={handleUpdateNote}
+        />
+
+        {result ? <PrintReport result={result} /> : null}
+      </main>
+    </Onborda>
   );
 }

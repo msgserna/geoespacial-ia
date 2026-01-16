@@ -79,7 +79,7 @@ export function AddressSearch({
   };
 
   return (
-    <div className="flex flex-col gap-2" ref={containerRef}>
+    <div id="onborda-search" className="flex flex-col gap-2" ref={containerRef}>
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">Buscar por direccion</div>
 

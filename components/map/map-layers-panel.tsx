@@ -145,7 +145,7 @@ export default function MapLayersPanel({
   }
 
   return (
-    <Card className="glass-panel w-[360px] shadow-lg">
+    <Card id="onborda-layers-panel" className="glass-panel w-[360px] shadow-lg">
       <CardHeader className="flex flex-row items-center justify-between py-3">
         <div className="text-sm font-semibold flex items-center gap-2">
           <Layers className="h-4 w-4" />
@@ -158,7 +158,7 @@ export default function MapLayersPanel({
 
       <CardContent className="space-y-4 pb-1">
         {/* BASE MAP */}
-        <div className="space-y-2">
+        <div id="onborda-base-map" className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground">MAPA BASE</div>
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -210,7 +210,7 @@ export default function MapLayersPanel({
         <Separator />
 
         {/* WEATHER */}
-        <div className="space-y-2">
+        <div id="onborda-weather" className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground">METEO (OpenWeather)</div>
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -253,7 +253,7 @@ export default function MapLayersPanel({
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div id="onborda-weather-opacity" className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-xs font-medium text-muted-foreground">Opacidad meteo</div>
             <div className="text-xs">{opacityPct}%</div>
@@ -270,9 +270,10 @@ export default function MapLayersPanel({
         <Separator />
 
         {/* Q100 */}
-        <div className="space-y-2">
+        <div id="onborda-flood" className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground">RIESGOS (SNCZI)</div>
           <Button
+            id="onborda-flood-button"
             variant={floodOn ? "default" : "outline"}
             onClick={onFloodToggle}
             className="w-full justify-start gap-2"
@@ -286,7 +287,7 @@ export default function MapLayersPanel({
         <Separator />
 
         {/* EFAS */}
-        <div className="space-y-2">
+        <div id="onborda-efas" className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground">COPERNICUS (EFAS)</div>
 
           <Button

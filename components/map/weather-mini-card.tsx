@@ -25,7 +25,13 @@ function riskFrom(inside: boolean, rain1hMm: number | null) {
   return { level: "Muy alto" as const, reason: "En Q100, lluvia intensa" };
 }
 
-export function WeatherMiniCard({ coords }: { coords: LatLon | null }) {
+export function WeatherMiniCard({
+  coords,
+  tourActive = false,
+}: {
+  coords: LatLon | null;
+  tourActive?: boolean;
+}) {
   const [wx, setWx] = useState<WeatherMini | null>(null);
   const [flood, setFlood] = useState<FloodInfo | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,7 +98,43 @@ export function WeatherMiniCard({ coords }: { coords: LatLon | null }) {
     return riskFrom(inside, rain1h);
   }, [flood?.inside, wx?.rain1hMm]);
 
-  if (!coords) return null;
+  if (!coords && !tourActive) return null;
+
+  if (!coords && tourActive) {
+    const fakeRisk = { level: "Medio" as const, reason: "En Q100, lluvia debil" };
+    return (
+      <Card className="glass-panel w-full max-w-[720px] rounded-2xl p-3 shadow-lg">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Badge className="gap-1">
+              <span className="text-primary-foreground">Riesgo</span>
+              <Waves className="h-3.5 w-3.5" />
+              {fakeRisk.level}
+            </Badge>
+            <span>({fakeRisk.reason})</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Thermometer className="h-4 w-4" />
+            <span className="text-xs text-muted-foreground">Temp</span>
+            <span className="tabular-nums font-medium">19.4 C</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Wind className="h-4 w-4" />
+            <span className="text-xs text-muted-foreground">Viento</span>
+            <span className="tabular-nums font-medium">3.2 m/s</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <CloudRain className="h-4 w-4" />
+            <span className="text-xs text-muted-foreground">Lluvia 1h</span>
+            <span className="tabular-nums font-medium">0.6 mm</span>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="glass-panel w-full max-w-[720px] rounded-2xl p-3 shadow-lg">

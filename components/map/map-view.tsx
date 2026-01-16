@@ -31,6 +31,8 @@ type MapViewProps = {
 
   terrain3d?: boolean;
 
+  tourMarker?: boolean;
+
   overlay?: React.ReactNode;
   bottomLeftOverlay?: React.ReactNode;
 };
@@ -68,6 +70,7 @@ export function MapView({
   efasTime = null,
 
   terrain3d = false,
+  tourMarker = false,
 
   overlay,
   bottomLeftOverlay,
@@ -450,12 +453,20 @@ export function MapView({
     );
   }
 
-  return (
+    return (
     <div className="relative h-full min-h-screen w-full overflow-hidden">
       {overlay ? <div className="absolute right-3 top-30 z-[1200]">{overlay}</div> : null}
       {bottomLeftOverlay ? (
         <div className="absolute bottom-4 left-1/2 z-[1200] -translate-x-1/2 transform">
           {bottomLeftOverlay}
+        </div>
+      ) : null}
+      {tourMarker ? (
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-[1100] -translate-x-1/2 -translate-y-full">
+          <div className="relative">
+            <div className="h-4 w-4 rounded-full bg-primary shadow-lg ring-4 ring-primary/30" />
+            <div className="absolute left-1/2 top-full h-4 w-4 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-primary shadow-lg" />
+          </div>
         </div>
       ) : null}
 
