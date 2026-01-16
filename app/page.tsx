@@ -595,7 +595,10 @@ function PageContent() {
               </div>
             }
             overlay={
-              <div id="onborda-layers-panel">
+              <div
+                id="onborda-layers-panel"
+                className="max-h-[calc(100dvh-120px)] overflow-y-auto"
+              >
                 <MapLayersPanel
                   open={layersOpen}
                   onOpenChange={(v) => {
@@ -876,6 +879,7 @@ function PageContent() {
     </Onborda>
   );
 }
+
 
 
 
