@@ -176,6 +176,7 @@
   /* El problema típico: layouts con h-dvh / overflow-hidden recortan el PDF */
   html,
   body {
+    color-scheme: light !important;
     height: auto !important;
     overflow: visible !important;
     background: #fff !important;
