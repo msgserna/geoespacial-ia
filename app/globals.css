@@ -266,52 +266,16 @@ body[data-onborda-welcome="1"] [data-name="onborda-card"] {
 }
 
 @media (max-height: 820px), (max-width: 1280px) {
-  .ui-panel-left {
-    max-width: clamp(360px, 40vw, 440px);
-    padding: clamp(0.75rem, 2vh, 1rem);
-    gap: clamp(0.6rem, 1.6vh, 1rem);
-    font-size: clamp(0.82rem, 1.6vh, 0.95rem);
-  }
-  .ui-panel-left .text-sm {
-    font-size: clamp(0.78rem, 1.5vh, 0.9rem);
-  }
-  .ui-panel-left .text-xs {
-    font-size: clamp(0.65rem, 1.2vh, 0.75rem);
+  .ui-panel-left,
+  .layers-panel,
+  .ui-mini-card {
+    zoom: 0.85;
   }
   .layers-panel {
-    width: clamp(300px, 34vw, 360px);
-  }
-  .layers-panel__header {
-    padding-top: clamp(0.35rem, 1vh, 0.5rem);
-    padding-bottom: clamp(0.35rem, 1vh, 0.5rem);
-  }
-  .layers-panel__content {
-    padding-top: clamp(0.5rem, 1.4vh, 0.75rem);
-    padding-bottom: clamp(0.5rem, 1.4vh, 0.75rem);
-    gap: clamp(0.5rem, 1.4vh, 0.75rem);
-  }
-  .layers-panel .text-sm {
-    font-size: clamp(0.78rem, 1.6vh, 0.9rem);
-  }
-  .layers-panel .text-xs {
-    font-size: clamp(0.65rem, 1.3vh, 0.75rem);
-  }
-  .layers-panel .h-4 {
-    height: clamp(0.8rem, 1.6vh, 0.9rem);
-    width: clamp(0.8rem, 1.6vh, 0.9rem);
-  }
-  .layers-panel button {
-    padding-top: clamp(0.3rem, 1vh, 0.4rem);
-    padding-bottom: clamp(0.3rem, 1vh, 0.4rem);
-  }
-  .layers-panel select {
-    padding-top: clamp(0.25rem, 0.8vh, 0.3rem);
-    padding-bottom: clamp(0.25rem, 0.8vh, 0.3rem);
-  }
-  .ui-mini-card {
-    font-size: clamp(0.78rem, 1.5vh, 0.9rem);
+    max-height: calc(100dvh - 80px);
   }
 }
+
 
 
 
