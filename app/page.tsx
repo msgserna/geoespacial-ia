@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AnalysisResponse, LatLon } from "@/types/analysis";
 
@@ -11,10 +11,30 @@ import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, FileDown, Save, Bookmark, Eraser, HelpCircle, Moon, Sun, Compass } from "lucide-react";
-import { Onborda, OnbordaProvider, useOnborda } from "onborda";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
+import {
+  MapPin,
+  FileDown,
+  Save,
+  Bookmark,
+  Eraser,
+  HelpCircle,
+  Moon,
+  Sun,
+  Compass,
+  Layers,
+  Thermometer,
+  CloudRain,
+  Waves,
+} from "lucide-react";
+
+import { Onborda, OnbordaProvider, useOnborda } from "onborda";
 import { toast } from "sonner";
 
 import {
@@ -35,12 +55,15 @@ import { WeatherMiniCard } from "@/components/map/weather-mini-card";
 import { OnbordaCard } from "@/components/onborda/onborda-card";
 
 // MapView solo en cliente (evita window is not defined)
-const MapView = dynamic(() => import("@/components/map/map-view").then((m) => m.MapView), {
-  ssr: false,
-  loading: () => (
-    <div className="h-[70vh] w-full rounded-xl border md:h-[calc(100vh-3.5rem)]" />
-  ),
-});
+const MapView = dynamic(
+  () => import("@/components/map/map-view").then((m) => m.MapView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[70vh] w-full rounded-xl border md:h-[calc(100vh-3.5rem)]" />
+    ),
+  }
+);
 
 const ONBORDA_SEEN_KEY = "onborda:seen";
 
@@ -55,6 +78,7 @@ export default function Page() {
 function PageContent() {
   const { theme, setTheme } = useTheme();
   const { startOnborda, isOnbordaVisible, currentStep, currentTour } = useOnborda();
+
   const [mounted, setMounted] = useState(false);
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<LatLon | null>(null);
@@ -77,6 +101,7 @@ function PageContent() {
   // Layers
   const [layersOpen, setLayersOpen] = useState(true);
   const layersOpenRef = useRef(layersOpen);
+
   const [baseMap, setBaseMap] = useState<"streets" | "satellite" | "outdoors" | "dark">(
     "streets"
   );
@@ -84,8 +109,8 @@ function PageContent() {
   const [weather, setWeather] = useState<"none" | "temp" | "precipitation" | "clouds" | "wind">(
     "none"
   );
-  const [weatherOpacity, setWeatherOpacity] = useState(0.8);
 
+  const [weatherOpacity, setWeatherOpacity] = useState(0.8);
   const [floodOn, setFloodOn] = useState(false);
 
   // EFAS
@@ -97,6 +122,7 @@ function PageContent() {
   const hasMapboxToken = !!process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const [terrain3d, setTerrain3d] = useState(false);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
   const hasResults = loading || !!result || !!error;
   const showResultsPanel = hasResults || tourActive;
 
@@ -109,9 +135,11 @@ function PageContent() {
     preTourSavedOpenRef.current = savedOpen;
     autoTourStartedRef.current = true;
     tourShownRef.current = false;
+
     setLayersOpen(true);
     setSavedOpen(false);
     setTourActive(true);
+
     setTimeout(() => startOnborda("main"), 220);
   }, [savedOpen, startOnborda]);
 
@@ -122,6 +150,7 @@ function PageContent() {
   useEffect(() => {
     if (!mounted) return;
     if (autoTourStartedRef.current) return;
+
     const seen = localStorage.getItem(ONBORDA_SEEN_KEY);
     if (!seen) {
       autoTourStartedRef.current = true;
@@ -130,9 +159,7 @@ function PageContent() {
   }, [mounted, startTour]);
 
   useEffect(() => {
-    if (tourActive) {
-      setLayersOpen(true);
-    }
+    if (tourActive) setLayersOpen(true);
   }, [tourActive]);
 
   useEffect(() => {
@@ -140,10 +167,13 @@ function PageContent() {
       tourShownRef.current = true;
       return;
     }
+
     if (!tourActive || !tourShownRef.current) return;
+
     localStorage.setItem(ONBORDA_SEEN_KEY, "1");
     setTourActive(false);
     tourShownRef.current = false;
+
     if (preTourLayersOpenRef.current !== null) {
       setLayersOpen(preTourLayersOpenRef.current);
       preTourLayersOpenRef.current = null;
@@ -154,15 +184,18 @@ function PageContent() {
     }
   }, [tourActive, isOnbordaVisible]);
 
-  // Normaliza la respuesta del API a la forma que consumen los paneles (data.*),
-  // sin perder la estructura original que ya se imprime/guarda.
+  // Normaliza la respuesta del API a la forma que consumen los paneles (data.*)
   function normalizeResult(raw: any): AnalysisResponse {
     const coordsSafe =
       raw?.coords && typeof raw.coords.lat === "number" && typeof raw.coords.lon === "number"
         ? raw.coords
-        : { lat: Number(raw?.lat) || 0, lon: Number(raw?.lon) || 0, label: raw?.label ?? null };
+        : {
+            lat: Number(raw?.lat) || 0,
+            lon: Number(raw?.lon) || 0,
+            label: raw?.label ?? null,
+          };
 
-    const dataBlock: AnalysisResponse["data"] = {};
+    const dataBlock: any = {};
 
     if ("geocode" in (raw?.data ?? {})) {
       dataBlock.geocode = (raw.data as any).geocode;
@@ -212,8 +245,8 @@ function PageContent() {
     const normalizedSources = Array.isArray(raw?.sources)
       ? raw.sources
       : raw?.sources && typeof raw.sources === "object"
-        ? Object.values(raw.sources)
-        : [];
+      ? Object.values(raw.sources)
+      : [];
 
     return {
       ...raw,
@@ -221,7 +254,7 @@ function PageContent() {
       mapImageUrl,
       data: dataBlock,
       report: raw?.report ?? "",
-      sources: normalizedSources,
+      sources: normalizedSources as any,
       limitations: Array.isArray(raw?.limitations) ? raw.limitations : [],
     };
   }
@@ -246,7 +279,9 @@ function PageContent() {
     }
     (async () => {
       try {
-        const res = await fetch(`/api/copernicus/efas/capabilities?layer=${encodeURIComponent(efasLayer)}`);
+        const res = await fetch(
+          `/api/copernicus/efas/capabilities?layer=${encodeURIComponent(efasLayer)}`
+        );
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || "EFAS capabilities error");
         setEfasTime(typeof json?.defaultTime === "string" ? json.defaultTime : null);
@@ -286,10 +321,7 @@ function PageContent() {
       const normalized = normalizeResult(raw);
       setResult(normalized);
 
-      if (
-        typeof normalized.coords?.lat === "number" &&
-        typeof normalized.coords?.lon === "number"
-      ) {
+      if (typeof normalized.coords?.lat === "number" && typeof normalized.coords?.lon === "number") {
         setCoords({ lat: normalized.coords.lat, lon: normalized.coords.lon });
       }
 
@@ -345,7 +377,9 @@ function PageContent() {
     }
 
     const title =
-      result.coords.label?.trim() || address.trim() || `Ubicacion ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+      result.coords.label?.trim() ||
+      address.trim() ||
+      `Ubicacion ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
 
     const item = createSavedLocation({
       title,
@@ -379,37 +413,41 @@ function PageContent() {
     weather === "none"
       ? null
       : weather === "temp"
-        ? "temp_new"
-        : weather === "precipitation"
-          ? "precipitation_new"
-          : weather === "clouds"
-            ? "clouds_new"
-            : "wind_new";
+      ? "temp_new"
+      : weather === "precipitation"
+      ? "precipitation_new"
+      : weather === "clouds"
+      ? "clouds_new"
+      : "wind_new";
 
-  const onbordaSteps = useMemo(
+  // ✅ Tipado correcto según TU versión de onborda (sin Tour/Step importados)
+  type OnbordaSteps = NonNullable<React.ComponentProps<typeof Onborda>["steps"]>;
+
+  const onbordaSteps = useMemo<OnbordaSteps>(
     () => [
       {
         tour: "main",
         steps: [
           {
+            icon: <Compass className="h-4 w-4" />,
             title: "Bienvenido",
-            content:
-              "Este es tu Asistente Geoespacial. Aqui evaluas riesgos y contexto del punto elegido.",
+            content: "Este es tu Asistente Geoespacial. Aqui evaluas riesgos y contexto del punto elegido.",
             selector: "#onborda-welcome-anchor",
             side: "bottom",
             pointerPadding: 6,
             pointerRadius: 10,
           },
           {
+            icon: <MapPin className="h-4 w-4" />,
             title: "Buscar o seleccionar",
-            content:
-              "Busca una direccion o selecciona un punto directamente en el mapa.",
+            content: "Busca una direccion o selecciona un punto directamente en el mapa.",
             selector: "#onborda-search",
             side: "bottom",
             pointerPadding: 12,
             pointerRadius: 16,
           },
           {
+            icon: <Layers className="h-4 w-4" />,
             title: "Menu de capas",
             content: "Desde aqui controlas las capas y el mapa base.",
             selector: "#onborda-layers-panel",
@@ -418,6 +456,7 @@ function PageContent() {
             pointerRadius: 16,
           },
           {
+            icon: <Compass className="h-4 w-4" />,
             title: "Mapa base",
             content: "Cambia el estilo base del mapa segun el contexto.",
             selector: "#onborda-base-map",
@@ -426,6 +465,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <Thermometer className="h-4 w-4" />,
             title: "Meteo",
             content: "Activa capas de temperatura, precipitacion, nubes o viento.",
             selector: "#onborda-weather",
@@ -434,6 +474,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <Waves className="h-4 w-4" />,
             title: "Inundaciones Q100",
             content: "Capa oficial de riesgo de inundacion (periodo de retorno 100).",
             selector: "#onborda-flood-button",
@@ -442,6 +483,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <CloudRain className="h-4 w-4" />,
             title: "Copernicus EFAS",
             content: "Capa europea de alerta temprana; ajusta la capa y opacidad.",
             selector: "#onborda-efas",
@@ -450,6 +492,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <Compass className="h-4 w-4" />,
             title: "Mini-card",
             content: "Resumen rapido del punto: riesgo, temp, viento y lluvia.",
             selector: "#onborda-mini-card",
@@ -458,6 +501,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <MapPin className="h-4 w-4" />,
             title: "Analizar punto",
             content: "Lanza el analisis cuando tengas un punto seleccionado.",
             selector: "#onborda-analyze",
@@ -466,6 +510,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <Compass className="h-4 w-4" />,
             title: "Resultados",
             content: "Aqui aparecera el informe con datos, fuentes y limitaciones.",
             selector: "#onborda-results",
@@ -474,6 +519,7 @@ function PageContent() {
             pointerRadius: 16,
           },
           {
+            icon: <Save className="h-4 w-4" />,
             title: "Guardar ubicacion",
             content: "Guarda el punto actual para revisarlo mas tarde.",
             selector: "#onborda-save",
@@ -482,6 +528,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <Bookmark className="h-4 w-4" />,
             title: "Ubicaciones guardadas",
             content: "Accede al historial de ubicaciones guardadas.",
             selector: "#onborda-saved",
@@ -490,6 +537,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <Eraser className="h-4 w-4" />,
             title: "Limpiar",
             content: "Reinicia la busqueda y el estado actual.",
             selector: "#onborda-clear",
@@ -498,6 +546,7 @@ function PageContent() {
             pointerRadius: 14,
           },
           {
+            icon: <FileDown className="h-4 w-4" />,
             title: "Descargar informe",
             content: "Cuando haya informe, puedes exportarlo en PDF.",
             selector: "#onborda-download",
@@ -517,18 +566,13 @@ function PageContent() {
   }, [tourActive, currentTour, currentStep]);
 
   return (
-    <Onborda
-      steps={onbordaSteps}
-      cardComponent={OnbordaCard}
-      shadowRgb="15, 23, 42"
-      shadowOpacity="0.55"
-      interact={false}
-    >
+    <Onborda steps={onbordaSteps} cardComponent={OnbordaCard} shadowRgb="15, 23, 42" shadowOpacity="0.55" interact={false}>
       <main className="relative h-dvh overflow-hidden">
         <div
           id="onborda-welcome-anchor"
           className="pointer-events-none fixed left-1/2 top-[22%] h-1 w-1 -translate-x-1/2 -translate-y-1/2"
         />
+
         <div className="absolute inset-0 print:hidden">
           <MapView
             value={coords}
@@ -549,51 +593,53 @@ function PageContent() {
               </div>
             }
             overlay={
-              <MapLayersPanel
-                open={layersOpen}
-                onOpenChange={(v) => {
-                  if (tourActive && !v) return;
-                  setLayersOpen(v);
-                }}
-                baseMap={baseMap}
-                onBaseMapChange={(v) => {
-                  if (!hasMapboxToken) {
-                    toast.error("Configura NEXT_PUBLIC_MAPBOX_TOKEN para usar Mapbox");
-                    return;
-                  }
-                  setBaseMap(v);
-                }}
-                weather={weather}
-                onWeatherChange={setWeather}
-                opacity={weatherOpacity}
-                onOpacityChange={setWeatherOpacity}
-                floodOn={floodOn}
-                onFloodToggle={() => {
-                  setFloodOn((prev) => {
-                    const next = !prev;
-                    toast.message(next ? "Inundaciones (Q100) activadas" : "Inundaciones (Q100) desactivadas");
-                    return next;
-                  });
-                }}
-                efasOn={efasOn}
-                onEfasToggle={() => {
-                  setEfasOn((prev) => {
-                    const next = !prev;
-                    toast.message(next ? "Copernicus EFAS activado" : "Copernicus EFAS desactivado");
-                    return next;
-                  });
-                }}
-                onEfasEnable={() => {
-                  setEfasOn(true);
-                  toast.message("Copernicus EFAS activado");
-                }}
-                efasLayer={efasLayer}
-                onEfasLayerChange={setEfasLayer}
-                efasOpacity={efasOpacity}
-                onEfasOpacityChange={setEfasOpacity}
-                terrain3d={terrain3d}
-                onTerrain3dToggle={() => setTerrain3d((prev) => !prev)}
-              />
+              <div id="onborda-layers-panel">
+                <MapLayersPanel
+                  open={layersOpen}
+                  onOpenChange={(v) => {
+                    if (tourActive && !v) return;
+                    setLayersOpen(v);
+                  }}
+                  baseMap={baseMap}
+                  onBaseMapChange={(v) => {
+                    if (!hasMapboxToken) {
+                      toast.error("Configura NEXT_PUBLIC_MAPBOX_TOKEN para usar Mapbox");
+                      return;
+                    }
+                    setBaseMap(v);
+                  }}
+                  weather={weather}
+                  onWeatherChange={setWeather}
+                  opacity={weatherOpacity}
+                  onOpacityChange={setWeatherOpacity}
+                  floodOn={floodOn}
+                  onFloodToggle={() => {
+                    setFloodOn((prev) => {
+                      const next = !prev;
+                      toast.message(next ? "Inundaciones (Q100) activadas" : "Inundaciones (Q100) desactivadas");
+                      return next;
+                    });
+                  }}
+                  efasOn={efasOn}
+                  onEfasToggle={() => {
+                    setEfasOn((prev) => {
+                      const next = !prev;
+                      toast.message(next ? "Copernicus EFAS activado" : "Copernicus EFAS desactivado");
+                      return next;
+                    });
+                  }}
+                  onEfasEnable={() => {
+                    setEfasOn(true);
+                    toast.message("Copernicus EFAS activado");
+                  }}
+                  efasLayer={efasLayer}
+                  onEfasLayerChange={setEfasLayer}
+                  efasOpacity={efasOpacity}
+                  onEfasOpacityChange={setEfasOpacity}
+                  terrain3d={terrain3d}
+                  onTerrain3dToggle={() => setTerrain3d((prev) => !prev)}
+                />
+              </div>
             }
           />
         </div>
@@ -609,6 +655,7 @@ function PageContent() {
                 <Compass className="h-4 w-4 text-primary dark:text-white" />
                 <span>Asistente Geoespacial</span>
               </div>
+
               <div className="flex items-center gap-2">
                 {mounted ? (
                   <>
@@ -629,7 +676,7 @@ function PageContent() {
               </div>
             </div>
 
-            <div className="text-sm">
+            <div id="onborda-search" className="text-sm">
               <AddressSearch
                 address={address}
                 onAddressChange={setAddress}
@@ -641,9 +688,7 @@ function PageContent() {
 
             <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
               <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  coords ? "bg-emerald-500" : "bg-muted-foreground/60"
-                }`}
+                className={`h-2.5 w-2.5 rounded-full ${coords ? "bg-emerald-500" : "bg-muted-foreground/60"}`}
                 aria-label={coords ? "Punto seleccionado" : "Sin punto"}
               />
               <div className="text-[11px] font-medium text-foreground">{coordLabel}</div>
@@ -728,9 +773,7 @@ function PageContent() {
                       variant="outline"
                       disabled={!result}
                       aria-label="Pdf"
-                      onClick={() =>
-                        result ? window.print() : toast.error("No hay informe para exportar")
-                      }
+                      onClick={() => (result ? window.print() : toast.error("No hay informe para exportar"))}
                     >
                       <FileDown className="h-5 w-5" />
                     </Button>
