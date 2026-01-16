@@ -145,14 +145,8 @@ export default function MapLayersPanel({
   }
 
   return (
-    <Card
-      id="onborda-layers-panel"
-      className="glass-panel w-[360px] shadow-lg origin-top-right"
-      style={{
-        transform: "scale(clamp(0.78, calc((100dvh - 140px) / 720), 1))",
-      }}
-    >
-      <CardHeader className="flex flex-row items-center justify-between py-3">
+    <Card id="onborda-layers-panel" className="glass-panel w-[360px] shadow-lg layers-panel">
+      <CardHeader className="layers-panel__header flex flex-row items-center justify-between py-3">
         <div className="text-sm font-semibold flex items-center gap-2">
           <Layers className="h-4 w-4" />
           Capas del mapa
@@ -162,7 +156,7 @@ export default function MapLayersPanel({
         </Button>
       </CardHeader>
 
-      <CardContent className="space-y-4 pb-1">
+      <CardContent className="layers-panel__content space-y-4 pb-1">
         {/* BASE MAP */}
         <div id="onborda-base-map" className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground">MAPA BASE</div>
@@ -355,4 +349,7 @@ export default function MapLayersPanel({
     </Card>
   );
 }
+
+
+
 
