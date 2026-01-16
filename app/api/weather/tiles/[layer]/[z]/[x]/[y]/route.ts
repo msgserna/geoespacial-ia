@@ -1,104 +1,73 @@
-import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
+// Capas permitidas de OpenWeather Tiles
 const ALLOWED_LAYERS = new Set([
   "temp_new",
   "precipitation_new",
   "clouds_new",
   "wind_new",
-]);
+] as const);
 
-function asInt(v: string) {
-  const n = Number.parseInt(v, 10);
-  return Number.isFinite(n) ? n : null;
-}
+type Params = {
+  layer: string;
+  z: string;
+  x: string;
+  y: string;
+};
 
 export async function GET(
-  _req: Request,
-  ctx: {
-    params:
-      | Promise<{ layer?: string; z?: string; x?: string; y?: string }>
-      | { layer?: string; z?: string; x?: string; y?: string };
-  }
+  _req: NextRequest,
+  ctx: { params: Promise<Params> } // ✅ Next 15/16: params es Promise
 ) {
-  const key = process.env.OPENWEATHER_API_KEY;
-  if (!key) {
-    return NextResponse.json(
-      { error: "Falta OPENWEATHER_API_KEY en el servidor." },
-      { status: 500 }
-    );
-  }
+  const { layer, z, x, y } = await ctx.params; // ✅ obligatorio
 
-  // ✅ Next 15/16: params puede ser Promise
-  const params = await Promise.resolve(ctx.params);
-
-  const layer = (params as any).layer ?? (params as any).Layer;
-  const z = params.z;
-  const x = params.x;
-  let y = params.y;
-
-  if (!layer || !z || !x || !y) {
-    return NextResponse.json(
-      { error: "Parámetros faltantes", params },
-      { status: 400 }
-    );
-  }
-
-  // Soporte si viene con extensión .png
-  if (y.endsWith(".png")) y = y.slice(0, -4);
-
-  if (!ALLOWED_LAYERS.has(layer)) {
-    return NextResponse.json(
+  if (!ALLOWED_LAYERS.has(layer as any)) {
+    return Response.json(
       { error: `Layer no permitido: ${layer}` },
       { status: 400 }
     );
   }
 
-  const zi = asInt(z);
-  const xi = asInt(x);
-  const yi = asInt(y);
-
-  if (zi === null || xi === null || yi === null) {
-    return NextResponse.json(
-      { error: "Parámetros de tile inválidos.", z, x, y },
-      { status: 400 }
+  const apiKey = process.env.OPENWEATHER_API_KEY;
+  if (!apiKey) {
+    return Response.json(
+      { error: "Falta OPENWEATHER_API_KEY en variables de entorno" },
+      { status: 500 }
     );
   }
 
-  const url = `https://tile.openweathermap.org/map/${layer}/${zi}/${xi}/${yi}.png?appid=${encodeURIComponent(
-    key
-  )}`;
+  const upstreamUrl = `https://tile.openweathermap.org/map/${layer}/${z}/${x}/${y}.png?appid=${apiKey}`;
 
   try {
-    const res = await fetch(url, { headers: { Accept: "image/png" } });
+    const upstream = await fetch(upstreamUrl, { cache: "no-store" });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return NextResponse.json(
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => "");
+      return Response.json(
         {
-          error: "OpenWeatherMap tile error",
-          status: res.status,
-          detail: text.slice(0, 200),
+          error: `OpenWeather tiles error (${upstream.status})`,
+          detail: text ? text.slice(0, 160) : undefined,
         },
-        { status: 502 }
+        { status: upstream.status }
       );
     }
 
-    const buf = await res.arrayBuffer();
-    return new NextResponse(buf, {
+    const buf = await upstream.arrayBuffer();
+
+    // Cache razonable (CDN/Vercel) para tiles
+    return new Response(buf, {
       status: 200,
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        "Cache-Control": "public, s-maxage=600, max-age=600",
       },
     });
   } catch (e: any) {
-    return NextResponse.json(
-      {
-        error: "No se pudo obtener el tile de OpenWeatherMap",
-        detail: String(e?.message ?? e),
-      },
+    return Response.json(
+      { error: `OpenWeather tiles fetch failed: ${e?.message || "unknown"}` },
       { status: 502 }
     );
   }
