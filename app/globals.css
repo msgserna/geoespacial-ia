@@ -265,20 +265,21 @@ body[data-onborda-welcome="1"] [data-name="onborda-card"] {
   }
 }
 
-@media (max-height: 820px) {
+@media (max-height: 820px), (max-width: 1280px) {
   .ui-panel-left {
-    transform: scale(0.9);
+    transform: scale(0.8);
     transform-origin: top left;
   }
   .layers-panel {
-    transform: scale(0.9);
+    transform: scale(0.8);
     transform-origin: top right;
   }
   .ui-mini-card {
-    transform: scale(0.9);
+    transform: scale(0.8);
     transform-origin: bottom center;
   }
 }
+
 
 
 
